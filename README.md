@@ -1,118 +1,143 @@
 # Quitclaim
 
-Sell control of a payout address. The address and vesting schedule stay the same; its controller changes.
+**An NFT that is the title to a Base address. Sell it or lease it, and the previous holder's signatures die first.**
 
-**Try the retained-signature heist:** after `bun install`, run `bun run heist`. No wallet, keys, `.env`, or funds are needed. See the [judge guide](JUDGE.md) for the live checks, public evidence, and current development finality.
+Locked and vesting tokens already change hands. They trade over the counter at [steep discounts](https://www.theblock.co/post/396371/crypto-tokens-discounts-secondary-markets), settled on trust, or by handing over a wallet. A buyer of a wallet can never be sure the seller didn't keep a copy of the key, or a withdrawal they signed before the sale and will broadcast after it.
 
-A NEP-171 NFT is the title to an address on Base Sepolia. The contract requests Chain Signatures only for the NFT's owner. Before the title moves, MPC foreign-transaction verification proves the old owner's outstanding nonce was consumed. Either an issued transfer or a burn can consume it.
+Quitclaim makes that handover provable. A NEP-171 NFT on NEAR controls a plain address on Base Sepolia through NEAR Chain Signatures, and nobody ever holds its private key. Before control changes hands, the contract burns the seller's outstanding Base nonce, and NEAR MPC proves on chain that the burn landed. Any transaction the seller kept is now invalid, and Base says so.
 
-This is a testnet prototype. Each lot's value is a real Sablier Lockup v4 stream on Base Sepolia, created non-cancelable and non-transferable with the lot address as recipient, funded in a test ERC-20. Signature enforcement depends on the MPC network and the contract's upgrade policy. Development deployments retain full-access keys: their holder can upgrade the contract or request signatures directly. The final demo deployment must disclose its key policy.
+Every sale ends with a quitclaim: the seller's last claim, burned on Base and proven on NEAR.
 
-## Layout
+## Try it in 30 seconds
 
-- `contracts/lot` is the NEAR contract (Rust, `cargo near`).
-- `contracts/evm` holds the test ERC-20 the lots hold (Foundry).
-- `packages/shared` holds chain config and lot-address derivation, used by every TS package.
-- `packages/ops` holds Bun scripts for provisioning, broadcasting and proving.
-- `apps/web` is the frontend (`Bun.serve` with HTML imports and React).
+```sh
+bun install
+bun run heist
+```
 
-## Setup
+No wallet, keys, `.env` or funds needed. The command checks a published handover against public chain data, then broadcasts the withdrawal Alice signed and kept before selling. Base rejects it:
 
-```bash
+```text
+Base rejected it: nonce too low: next nonce 3, tx nonce 1
+PASS Alice's retained withdrawal was rejected. Current owner: carol.quitclaim-spike-43135.testnet.
+```
+
+The [judge guide](JUDGE.md) explains each check and links every transaction.
+
+## How it works
+
+```mermaid
+sequenceDiagram
+    participant Alice as Alice (seller)
+    participant Lot as Lot contract (NEAR)
+    participant MPC as NEAR MPC
+    participant Base as Base Sepolia
+    participant Bob as Bob (buyer)
+    Alice->>Lot: request_transfer (to herself)
+    Lot->>MPC: sign (recorded as issued first)
+    MPC-->>Alice: signed tx at nonce 1, which she keeps
+    Alice->>Lot: seal
+    Lot->>MPC: sign a burn at nonce 1
+    Note over Base: anyone broadcasts the burn; it mines and consumes nonce 1
+    Lot->>MPC: verify_foreign_transaction(burn)
+    MPC-->>Lot: attested, lot is Clean
+    Bob->>Lot: buy (title moves, payment credited)
+    Alice->>Base: broadcast kept tx
+    Base-->>Alice: nonce too low
+```
+
+1. **The title.** Each lot is an NFT whose Base address is derived by Chain Signatures from the contract and `<minter>/<name>`. The contract asks MPC to sign only for the NFT's controller, and only transactions it builds itself: an ERC-20 `transfer` of the token fixed at mint, or a nonce burn. No raw signing, no approvals, no other calls.
+2. **The value.** A real [Sablier Lockup v4](https://docs.sablier.com) stream pays the lot address. It is created non-cancelable and non-transferable, so nobody can cancel it or redirect it. Anyone can pull vested tokens into the lot; only the controller can move them out.
+3. **Admin-free minting.** `mint_proven` takes the stream's creation log. The contract checks it is Sablier's event, non-cancelable, non-transferable and paying the derived address, then has MPC attest that exact log on Base. Anyone front-running the mint gets a different derived address, so the check fails.
+4. **The handover.** Every signature request is recorded before it's signed, since MPC signatures are public. Sealing burns the outstanding nonce, and `prove` asks MPC `verify_foreign_transaction` to attest the burn mined, using only hashes from contract state. Only then is the lot Clean, and only a Clean lot can change hands.
+
+## What you can do with a lot
+
+- **Sell it.** List a Clean lot at a fixed price. `buy` moves the title and credits the seller and the minter's royalty (up to 10%) in one call, with no cross-contract calls. Payouts are pulled.
+- **Lease it.** "Sell the next 90 days of unlocks, keep the rest." The owner offers a term; the lessee pays and receives a lease NFT (`<id>-lease`) that controls the address until it ends. The lessee can move out at most what the stream vests during the lease, computed from the attested schedule with Sablier's own formula. The title can't move while a lease exists.
+- **Resell a lease.** The lease NFT is sold through the same Clean handover, so the old lessee's kept signatures die before the new one takes over.
+- **Let it expire.** After the end, anyone can seal. The lessee's leftover signatures are burned and proven, the lease NFT burns, and control returns to the title holder. The heist runs in reverse: this time the buyer tried to keep it, and Base rejects that too.
+
+Each lot's NFT shows an on-chain SVG title card in any NEAR wallet: lot, Base address, stream and state, plus end date and remaining budget for a lease.
+
+## Why NEAR
+
+- **Chain Signatures** give a NEAR contract a native Base address it signs for, under a policy the contract enforces. There's no bridge and no smart account on Base.
+- **MPC foreign-transaction verification** lets the same contract learn, without an oracle of our own, that a specific Base transaction mined at a chosen finality. That is what turns "the seller promises" into "the nonce is consumed, proven".
+- **NEP-171** makes the title an ordinary NEAR NFT that wallets, explorers and marketplaces already understand.
+
+NEAR's own [NFT Chain Keys](https://github.com/near/multichain-gas-station-contract) already sell chain-signature keys as NFTs. Its transfer revokes approvals and moves the token, but nothing consumes the seller's outstanding foreign nonce, so a transaction signed before the transfer can still be broadcast after it. Quitclaim adds that missing step: the handover proof.
+
+## NFT track checklist
+
+| The track asks | Where to see it |
+| --- | --- |
+| What stops the old owner keeping access? | `bun run heist`; the `handover` and `lease` e2e reports in `reports/` |
+| Only the current holder can act | e2e rows "alice requests after the sale" and "alice requests during the lease" |
+| A sale in the middle of a payout | e2e row "outsider pulls the stream while listed": the lot's total never drops |
+| What it earned, what it paid out, who held it | each e2e report lists every NEAR and Base transaction; the title card shows the stream |
+| Every way a seller could try to keep the money | the threat table below, each row backed by a test or an e2e step |
+
+## Threats and defences
+
+| Attempt | What stops it |
+| --- | --- |
+| Seller broadcasts a withdrawal signed before the sale | The nonce is burned and proven before the title moves; Base rejects it |
+| Seller broadcasts first, while sealing | The burn replaces it at a higher fee; Base drops the withdrawal |
+| Seller asks for a new signature after the sale | The contract refuses: not the controller |
+| Transfer while a signature request is pending | Not Clean, so the transfer is refused |
+| Forged proof: the same payload signed with another key | Signatures must `ecrecover` to the lot address; proofs use hashes from contract state |
+| Front-run mint of someone else's stream | The path is `<caller>/<name>`, so the recipient check fails |
+| Mint against a cancelable or transferable stream | Refused from the attested creation log |
+| Lessee takes more than the term's income | Each request is charged against the vested budget at signing time |
+| Lessee keeps a signature past expiry | Expiry seals, burns and proves before control returns |
+| A transfer mines but reverts | `rescue` burns the next nonce; proving it proves both |
+
+## Trust and limits
+
+- **MPC.** Signing and attestation rely on NEAR's MPC network and its RPC-provider quorum. Base reorganisations beyond the proof's finality remain a risk; the final deployment proves at `Safe`.
+- **Upgrade keys.** Development deployments keep a full-access key. The final deployment has every full-access key deleted (`bun run freeze`) after its full e2e suite passes at Safe, and `bun run heist` reports whether the contract is frozen.
+- **Purpose-created addresses.** The stream must pay a lot address from the start; existing wallets can't be imported. Minting is permissionless and doesn't need the stream sender's approval of a sale.
+- **Sablier.** Sablier Labs [entered maintenance mode](https://blog.sablier.com/sablier-labs-is-entering-maintenance-mode) in July 2026. Its contracts run on chain permanently, and Quitclaim calls them directly. Quitclaim is not affiliated with Sablier.
+- **Testnet.** Everything runs on NEAR testnet and Base Sepolia with a test token. This demonstrates the mechanism; customer demand is unproven.
+
+**Hard questions.** If the stream's sender offers a transferable Sablier stream, trading its NFT is simpler. A [Safe with owner rotation](https://docs.safe.global/reference-smart-account/owners/swapOwner) or an [ERC-6551 account](https://eips.ethereum.org/EIPS/eip-6551) is a genuine alternative too. Quitclaim's angle is a native address with a fixed, inspectable signing policy, a NEAR NFT title, one-call settlement, and an on-chain proof that the previous holder's signatures are dead. It doesn't claim this is impossible elsewhere.
+
+## Roadmap
+
+- **More sources:** an immutable checkout contract whose sales pay a lot ("sell the cash register"), and Sablier Merkle airdrops.
+- **Revocable grants:** hand a lot to an agent and revoke it with a receipt proving nothing it was issued can still land.
+- **More chains:** Arbitrum, which MPC verification already supports.
+
+## For developers
+
+**Layout.** `contracts/lot` is the NEAR contract (Rust, `cargo near`). `contracts/evm` is the test ERC-20 (Foundry). `packages/shared` holds chain config, address derivation and the ABI-generated types. `packages/ops` holds the Bun scripts. `apps/web` is the frontend.
+
+**Setup.** Needs Bun, Rust 1.96 with `wasm32-unknown-unknown`, `cargo-near` and Foundry.
+
+```sh
 git submodule update --init
 bun install
 bun run verify
 ```
 
-`bun run verify` type checks, runs the TS and Rust unit tests, builds the lot contract, runs local NEAR Sandbox tests, and builds and tests the EVM contracts. Needs Bun, Rust 1.96 with `wasm32-unknown-unknown`, `cargo-near` and Foundry. The first Sandbox run downloads the node binary; it needs loopback networking and no testnet funds.
+`bun run verify` checks the generated ABI, type-checks, runs the TS and contract unit tests, runs the deployed WASM in NEAR Sandbox against a local MPC stand-in, and builds and tests the EVM contracts.
 
-`bun run test:sandbox` runs the deployed-WASM receipt tests alone. A local MPC fixture injects verification and signing failures. The suite checks mint rollback and storage refunds, private callback enforcement, sales, payout restoration after a real failed transfer receipt, and a lease that runs out, is sealed and proven, and hands control back. Real MPC attestations and Base execution remain covered by `bun run e2e`.
+**Commands.**
 
-For a release, commit the source and run `bun run build:release`. This uses Docker and the digest-pinned SourceScan image with Rust 1.96 and cargo-near 0.21.1. Keep the resulting artifact for deployment and compare its hash with the deployed code. Development builds from `build:lot` are not evidence of source reproducibility.
+| Command | What it does |
+| --- | --- |
+| `bun run heist [evidence.json]` | Verifies a published handover and replays the kept transaction, keyless |
+| `bun run test:heist` | Runs the heist with an empty home, working directory and environment |
+| `bun run e2e [minting\|handover\|recovery\|lease]` | The adversarial suite on fresh lots against testnet; writes `reports/` with every transaction link |
+| `bun run keeper [--watch]` | Settles lots: ends run-out leases, tops up gas, broadcasts, proves, rescues. Every action is permissionless |
+| `bun run deploy-lot <account> [Latest\|Safe]` | Creates the account and deploys the lot contract |
+| `bun run lot-address <contract> <path>` | Prints a lot's Base address |
+| `bun run build:release` | Reproducible build in a digest-pinned Docker image, for the final deployment |
+| `bun run freeze` | Deletes every full-access key on `LOT_CONTRACT`, once, after the Safe e2e suite passes on the deployed code. Irreversible |
+| `bun run dev` | Serves the frontend |
 
-## Commands
-
-- `bun run dev` serves the frontend with HMR.
-- `bun run heist [evidence.json]` verifies the published handover and replays the consumed retained transaction using public RPCs. It defaults to `reports/heist.json`.
-- `bun run test:heist` runs that live command with an empty home, working directory and credential environment. It is separate from deterministic `verify`.
-- `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
-- `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
-- `bun run e2e [minting|handover|recovery|lease]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with a minter royalty and pulled payouts, and a resale to a third owner at the same address. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer. `lease` covers a take refused after the owner shortened the term, a lease taken and resold with royalties, the owner locked out, the lessee's budget, two kept lessee transfers rejected by Base, and the keeper ending the lease at expiry.
-- `bun run keeper [--watch]` lists every pending lot in pages of 100, then settles them, since settling closes leases and shrinks the list: it seals a lot whose lease has run out (or ends the lease if the lot is already Clean), tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
-- `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
-
-Ops scripts need a root `.env`; see `.env.example`.
-
-Every account in `.env.example` is required. The handover scenario uses `MINTER_ACCOUNT` for the lot's minter and royalty beneficiary, and `KEEPER_ACCOUNT` proves, rebumps and rescues for the keeper and e2e.
-
-Public lot views now return `minter` in place of `issuer`, and lots store their stream schedule and lease. Use a fresh deployment built from this revision with the updated ops scripts.
-
-Changing the lot contract account or the path scheme changes every lot address.
-
-## Proof and recovery
-
-`prove` uses only hashes recorded for the lot and does not lock out concurrent proofs. A failed proof cannot hold up an honest one. Stale proof callbacks do not advance the nonce again.
-
-The hardened contract removes the stored proof lock and changes `rebump`'s arguments. Deploy it to a fresh development account; existing deployments require a state migration before an upgrade.
-
-Fees have a 1 Mwei floor. Each replacement raises both fees by at least 10%, under hard caps, with at most 16 issued transfers per nonce. Burns have no count limit, because signed burns all priced below Base's base fee floor would otherwise strand the lot; the floor, the 10% bump and the caps already bound them (about 80 per nonce). A burn whose signature was never recorded is signed again as it stands, not replaced, so failed signing can't use up the burns. Only burns are re-signed: any signature of a burn can only consume the nonce. If the limits prevent another replacement, transfer remains blocked until consumption is proven.
-
-If a transfer mines but reverts, MPC cannot prove it. During Sealing, `rescue` signs a burn at the next nonce; proving that burn proves the reverted nonce consumed too. `rebump` takes an explicit nonce so the earlier burn remains repriceable after rescue.
-
-Reports record finality, the deployed code hash, and the decoded retained transaction. `Latest` runs are development checks. The final demo requires `Safe`; Base reorganizations beyond that finality remain a risk. Proofs rely on honest MPC attestation and its RPC-provider quorum.
-
-## The asset: a Sablier stream
-
-A funder creates a Sablier Lockup v4 linear stream (`0xA65A1ecEf02C2B9BDc604951c6A6D02335D4532e` on Base Sepolia) with the lot address as recipient, `cancelable = false` and `transferable = false`. Sablier enforces the rest:
-
-- Anyone may withdraw vested tokens, but only **to the recipient**. Withdrawing to any other address reverts with `SablierLockup_WithdrawalAddressNotRecipient`.
-- Nobody can cancel the stream (`SablierLockup_StreamNotCancelable`) or move its NFT (`SablierLockup_NotTransferable`).
-
-Quitclaim moves control of the recipient address, not the stream. The lot contract never signs Sablier calls. Anyone pulls the stream into the lot. The owner moves tokens out with a contract-built ERC-20 `transfer` of the token fixed at mint. So, while a lot is listed, outsiders can move value from the stream into the lot, but nothing can reduce the lot's total (still streaming plus held).
-
-## Minting, with no admin
-
-The intended user is a holder who wants to sell a future payout and a buyer who needs a verifiable handover. Before funding, the minter derives a lot address under `<minter account>/<name>` and arranges for the stream to pay it. Existing streams paying ordinary wallets cannot be imported.
-
-The minter calls `mint_proven(name, owner, royalty_bps, log)` with the stream's `CreateLockupLinearStream` log. The contract checks the configured Sablier emitter, linear-stream event, non-cancelable and non-transferable flags, and recipient equal to the derived lot address. MPC attests that exact log at the contract's finality, with an expected payload hash computed using its pinned interface crate. If attestation fails, the mint rolls back. The token and stream come from the attested log.
-
-Minting is permissionless by design. The **minter** is the NEAR caller who chooses the initial owner and receives the minter royalty. The **owner** controls the lot. The source stream's sender and funder are separate roles. Minting does not require or record their approval of a sale. A cooperating source sender can also mint a lot for another owner.
-
-A holder can sell their economic exposure before vesting finishes. The tokens continue to unlock on the original schedule. Source verification and Clean do not establish the sender's approval or transfer off-chain rights.
-
-Namespacing stops front-running: anyone watching Base could see a new stream, but minting it under their own account derives a different address, so the recipient check fails.
-
-A buyer can still re-run the title search from Base: recipient is the lot, non-cancelable, non-transferable, token matches.
-
-Quitclaim is not affiliated with or endorsed by Sablier.
-
-**Why not create the stream transferable?** If the source sender offers a transferable Sablier stream, trading its NFT is a simpler option. A [Safe with owner rotation](https://docs.safe.global/reference-smart-account/owners/swapOwner) or an [ERC-6551 account that checks the current NFT owner](https://eips.ethereum.org/EIPS/eip-6551#example-account-implementation) is also a genuine alternative. Quitclaim packages a fixed set of signing capabilities, a NEAR NFT title, and a purchase that moves the title and credits payment in one call. It proves nonce consumption for a native Base address; it does not claim smart accounts inherently accept an old owner's signatures. The testnet demonstrates the mechanism, not customer demand.
-
-## The NFT
-
-Each lot is a NEP-171 token whose `media` is an SVG title card rendered on chain (lot id, Base address, Sablier stream, state), so wallets show it without hosted images. A leased lot also has a lease token, `<id>-lease`, with its own card: the end date and the budget left.
-
-## Leases
-
-A title owner can lease a Clean lot for a term with `offer_lease(id, price, ends_at_ms)`. The offer is bound to the lot version, like a listing. `take_lease(id, version, ends_at_ms)` pays the exact price and must name the offer's exact end, since replacing an offer keeps the version. It credits the owner and the minter royalty, mints the lease token and makes the lot Active for the lessee.
-
-While a lease exists, the lease holder controls the lot: only they can request transfers, seal, unseal or list. The owner can't revoke it, and the title can't move, be listed or be sold.
-
-The lessee may move out at most what the stream vests during the lease. The contract stores the stream's schedule from the attested creation log and computes Sablier's own `calculateStreamedAmountLL`, tested against values read from live streams on Base Sepolia. Each nonce is charged its largest issued transfer, since only one transaction per nonce can land. `lease_budget(id)` shows what is allowed and committed.
-
-The lease holder resells the lease with `list` and `buy` (royalty applies; the seller is the lease holder) or moves it with `nft_transfer`, only from Clean, through the same proven handover as a title. The spent budget carries over.
-
-A lease ends only at Clean, so every signature its holders received is burned and proven before control returns. After `ends_at`, anyone may seal and nobody may unseal; the proof that reaches Clean burns the lease token. A lot already Clean at expiry ends its lease on the next call, or with the permissionless `end_lease(id)`. The holder may end it early from Clean with `surrender_lease(id)`.
-
-## Sale and royalty
-
-The controller lists a lot only while it is Clean, so nothing can sign and the position can't change under the offer. The listing names its item (the title, or the lease while one exists) and is bound to the lot's version; `unseal`, any transfer, or a lease ending cancels it.
-
-`buy(id, version)` is one call. It checks the lot is Clean, the listing matches the version the buyer saw, and the deposit equals the price. It then moves the listed token and credits the seller and the minter in contract state, with no cross-contract calls, so token and credit can't diverge.
-
-The minter royalty is fixed at mint and capped at 10%. Integer rounding favours the seller. `nft_payout` (NEP-199) is a view of exactly what `buy` credits, for the tokens `nft_token` shows. There is no `nft_transfer_payout`, and a direct `nft_transfer` pays no royalty: "minter royalties on Quitclaim sales" only.
-
-Proceeds are pulled with `withdraw_proceeds`. The balance is zeroed before the transfer and restored once if the transfer fails.
+Ops scripts read the root `.env`; copy `.env.example` and set every account. The lot address depends on the contract account and the path, so changing either orphans every lot. `AGENTS.md` lists the security invariants and gotchas; fee rules, recovery and lease budgeting are documented in the contract source.
 
 ## License
 
