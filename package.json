@@ -2,7 +2,10 @@
   "name": "quitclaim",
   "type": "module",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun --filter @quitclaim/web dev",
     "typecheck": "bun check",
@@ -11,7 +14,10 @@
     "test:lot": "cargo test -p quitclaim-lot",
     "build:vesting": "cd contracts/vesting && forge build",
     "test:vesting": "cd contracts/vesting && forge test",
-    "verify": "bun run typecheck && bun run test && bun run test:lot && bun run build:lot && bun run build:vesting && bun run test:vesting"
+    "verify": "bun run typecheck && bun run test && bun run test:lot && bun run build:lot && bun run build:vesting && bun run test:vesting",
+    "gate1": "bun packages/ops/src/gate1.ts",
+    "deploy-lot": "bun packages/ops/src/deploy-lot.ts",
+    "lot-address": "bun packages/ops/src/lot-address.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
