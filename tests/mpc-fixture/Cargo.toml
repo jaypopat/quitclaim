@@ -1,0 +1,11 @@
+[package]
+name = "quitclaim-mpc-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+near-sdk = "5.30"
