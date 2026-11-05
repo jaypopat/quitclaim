@@ -8,6 +8,7 @@ import { call } from "../near.ts";
 export const contract = env.lotContract();
 export const alice = process.env.ALICE_ACCOUNT ?? env.deployer();
 export const bob = process.env.BOB_ACCOUNT ?? `bob.${env.deployer()}`;
+export const carol = process.env.CAROL_ACCOUNT ?? `carol.${env.deployer()}`;
 export const issuer = process.env.ISSUER_ACCOUNT ?? env.deployer();
 /** Proves and rescues; any account works, since both are permissionless. */
 export const keeper = process.env.KEEPER_ACCOUNT ?? bob;

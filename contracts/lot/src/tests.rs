@@ -11,6 +11,7 @@ use near_sdk::{testing_env, AccountId, NearToken, PromiseError};
 
 use crate::*;
 use alloy_sol_types::SolEvent;
+use near_sdk::base64::prelude::Engine;
 
 const REAL_CREATION_LOG: &str = r#"{"removed":false,"log_index":28,"transaction_index":3,"transaction_hash":"3bcd6f5681d33388a3990e3e39fa4c7b4a58d63982750d71e2e2eef5b6455dba","block_hash":"9823e6cc70237f30175ffab02e6f681604d848b8d049c1daa1ce74569f113254","block_number":54789566,"address":"a65a1ecef02c2b9bdc604951c6a6d02335d4532e","data":"0x00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008af686edd999e3ab397cfe47e9e5b5d0dbc89e4d0000000000000000000000008af686edd999e3ab397cfe47e9e5b5d0dbc89e4d0000000000000000000000000650899c81daacc773353a0fcd74c80b38f0fa0700000000000000000000000000000000000000000000003635c9adc5dea00000000000000000000000000000cdf24142f02ea7fcf5db8b1dfbc1dd25bf021f6400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006aec6ee6000000000000000000000000000000000000000000000000000000006aec7cf6000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000000066c696e6561720000000000000000000000000000000000000000000000000000","topics":["bc42cec3f2bd75ce97894dacc83ec6c4b682220d349b5a52d5743e7b46eba2d0","0000000000000000000000000000000000000000000000000000000000000070"]}"#;
 const LOT_KEY: &str = "secp256k1:cLjnNHX33xCBjXo1Tajm6YNc9ycqAuUCUfEKw7uTKvX6nm2hM4PFmRviYQCqfieiSDHsDzd2vd8zgRt2QuTjN14";
@@ -107,7 +108,7 @@ fn mint(c: &mut Contract, issuer: AccountId, name: &str, owner: AccountId, royal
     call(issuer, ONE_NEAR);
     let _ = c.mint_proven(name.into(), owner, royalty_bps, log.clone());
     let id = c.next_id - 1;
-    let recipient = evm::format_address(&source::decode(&log.to_evm_log().unwrap(), &evm::parse_address(LOCKUP).unwrap()).unwrap().recipient);
+    let recipient = format!("{:#x}", source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap()).unwrap().recipient);
     as_contract();
     if let PromiseOrValue::Value(v) = c.on_derived(id, recipient, log, STORAGE, Ok(key.into())) {
         return v;
@@ -237,8 +238,8 @@ fn hashes_the_creation_log_exactly_as_mpc_attested() {
     let evm_log = log.to_evm_log().unwrap();
     let request = source::verify_request(&evm_log, Finality::Latest).unwrap();
     assert_eq!(hex::encode(request.expected_payload_hash.unwrap().0), "512781a3776f692f4b6123a4d48b7bb2207128df9e50c249ec6d88abe5db092f");
-    let stream = source::decode(&evm_log, &evm::parse_address(LOCKUP).unwrap()).unwrap();
-    assert_eq!((stream.id, evm::format_address(&stream.recipient)), (112, "0x0650899c81daacc773353a0fcd74c80b38f0fa07".into()));
+    let stream = source::decode(&evm_log, &LOCKUP.parse().unwrap()).unwrap();
+    assert_eq!((stream.id, format!("{:#x}", stream.recipient)), (112, "0x0650899c81daacc773353a0fcd74c80b38f0fa07".into()));
     assert_eq!(stream.deposit, 1_000 * 10u128.pow(18));
 }
 
@@ -794,4 +795,14 @@ fn a_lot_awaiting_mpc_is_not_an_nft_yet() {
     assert_eq!(c.get_lot(0).unwrap().state, LotState::Minting);
     assert!(c.nft_token("0".into()).is_none());
     assert_eq!((c.nft_total_supply().0, c.nft_tokens(None, None).len()), (0, 0));
+}
+
+#[test]
+fn tokens_carry_an_on_chain_title_card() {
+    let c = active_lot();
+    let meta = c.nft_token("0".into()).unwrap().metadata.unwrap();
+    let media = meta.media.unwrap();
+    let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
+    let svg = String::from_utf8(svg).unwrap();
+    assert!(svg.contains("Quitclaim lot #0") && svg.contains(LOT_ADDR) && svg.contains("Sablier stream 7"));
 }

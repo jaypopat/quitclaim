@@ -1,4 +1,4 @@
-import { Account, actions, teraToGas, type KeyPairString } from "near-api-js";
+import { Account, actions, getTransactionLastResult, teraToGas, type KeyPairString } from "near-api-js";
 import { nearProvider, nearView, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
@@ -13,8 +13,7 @@ async function keyFor(accountId: string): Promise<KeyPairString> {
   return (await file.json()).private_key;
 }
 
-/** Signed txs fail over too. Resending the same signed tx is safe: NEAR dedupes by tx hash. */
-export const provider = () => nearProvider();
+export const provider = nearProvider;
 
 export async function account(accountId: string): Promise<Account> {
   return new Account(accountId, provider(), await keyFor(accountId));
@@ -35,17 +34,15 @@ export async function call<M extends keyof LotCalls>(
   { deposit = 0n, tgas = 300 }: { deposit?: bigint; tgas?: number } = {},
 ): Promise<CallOutcome<LotCalls[M]["result"]>> {
   const acct = await account(signer);
-  const res = (await acct.signAndSendTransaction({
+  const res = await acct.signAndSendTransaction({
     receiverId: contractId,
     actions: [actions.functionCall(method, args, teraToGas(tgas), deposit)],
     waitUntil: "FINAL",
     throwOnFailure: false,
-  })) as { transaction: { hash: string }; status: Record<string, unknown> };
+  });
   const sent = { tx: res.transaction.hash, url: explorer(res.transaction.hash) };
-  if ("Failure" in res.status) return { ...sent, ok: false, error: failureMessage(res.status) };
-  const raw = res.status.SuccessValue as string | undefined;
-  const text = raw ? Buffer.from(raw, "base64").toString() : "";
-  return { ...sent, ok: true, value: (text ? JSON.parse(text) : null) as LotCalls[M]["result"] };
+  if (typeof res.status === "object" && "Failure" in res.status) return { ...sent, ok: false, error: failureMessage(res.status) };
+  return { ...sent, ok: true, value: (getTransactionLastResult(res) ?? null) as LotCalls[M]["result"] };
 }
 
 export function view<M extends keyof LotViews>(contractId: string, method: M, args: LotViews[M]["args"]): Promise<LotViews[M]["result"]> {

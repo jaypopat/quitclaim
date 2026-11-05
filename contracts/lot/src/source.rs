@@ -89,7 +89,7 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
     if log.removed {
         return Err("log was removed by a reorg");
     }
-    if &log.address.0 != lockup {
+    if Address::from(log.address.0) != *lockup {
         return Err("log is not from the configured Sablier Lockup");
     }
     let topics = log.topics.iter().map(|t| B256::from(t.0));
@@ -103,8 +103,8 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
     }
     Ok(Stream {
         id: event.streamId.try_into().map_err(|_| "stream id exceeds u128")?,
-        recipient: common.recipient.into_array(),
-        token: common.token.into_array(),
+        recipient: common.recipient,
+        token: common.token,
         deposit: common.depositAmount,
     })
 }

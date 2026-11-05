@@ -14,6 +14,7 @@ version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5e9dbd49258ac3ab893a481d46be29b58be7f734dcac46cd80b6b13ee36566c"
 dependencies = [
+ "borsh",
  "bytes",
  "cfg-if 1.0.5",
  "const-hex",
@@ -2266,6 +2267,7 @@ version = "1.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0de3fa9b4dac39cc2bd65679bacf9f531899d933605e2963b40c2129cdb55f2"
 dependencies = [
+ "borsh",
  "proptest",
  "rand 0.10.3",
  "rand 0.8.8",

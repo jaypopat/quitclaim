@@ -26,9 +26,10 @@ bun run verify
 
 - `bun run dev` serves the frontend with HMR.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
-- `bun run deploy-lot <prefix> [Latest|Safe]` deploys a lot contract to `<prefix>.<DEPLOYER_ACCOUNT>`.
-- `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
+- `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
+- `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts, and a resale to a third owner at the same address. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
 - `bun run keeper [--watch]` settles every lot with unproven transactions: it tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
+- `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 
 Ops scripts need a root `.env`; see `.env.example`.
 
@@ -66,6 +67,10 @@ A buyer can still re-run the title search from Base: recipient is the lot, non-c
 Quitclaim is not affiliated with or endorsed by Sablier.
 
 **Why not create the stream transferable?** A transferable Sablier stream is a freely tradable ERC-721: anyone can sell it anywhere, with no issuer gating and no royalty enforcement. Quitclaim is for issuers who want transfers gated through one handover rule (seal, prove the old signatures dead, then move), with royalties on Quitclaim sales and a visible history. The allocation still has to name the lot address from the start.
+
+## The NFT
+
+Each lot is a NEP-171 token whose `media` is an SVG title card rendered on chain (lot id, Base address, Sablier stream, state), so wallets show it without hosted images.
 
 ## Sale and royalty
 

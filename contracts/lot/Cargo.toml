@@ -20,7 +20,7 @@ near-mpc-contract-interface = { git = "https://github.com/near/mpc", rev = "e691
 near-mpc-sdk = { git = "https://github.com/near/mpc", rev = "e691bdb98d68dcf74653da58d043453a6318765f" }
 # 1.7 pins proc-macro-error3 <=3.0.1, which near-sdk 5.30 can't satisfy.
 alloy-sol-types = { version = "=1.6.0", default-features = false }
-alloy-primitives = { version = "1", default-features = false }
+alloy-primitives = { version = "1", default-features = false, features = ["borsh"] }
 serde_json = "1"
 near-sdk = { version = "5.30", features = ["unstable"] }
 omni-transaction = { version = "0.5.0", default-features = false, features = ["evm", "serde", "serde_json"] }

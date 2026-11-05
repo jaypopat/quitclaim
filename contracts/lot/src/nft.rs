@@ -4,6 +4,7 @@
 
 use near_contract_standards::non_fungible_token::metadata::{NFTContractMetadata, TokenMetadata, NFT_METADATA_SPEC};
 use near_contract_standards::non_fungible_token::{Token, TokenId};
+use near_sdk::base64::prelude::{Engine, BASE64_STANDARD};
 use near_sdk::json_types::U128;
 use near_sdk::{assert_one_yocto, env, near, require, AccountId, PromiseOrValue};
 
@@ -18,13 +19,25 @@ fn is_minted(lot: &Lot) -> bool {
     lot.state != LotState::Minting
 }
 
+/// A title card rendered on chain, so wallets show the lot without any hosted image.
+fn card(id: LotId, lot: &Lot) -> String {
+    let address = lot.address.as_deref().unwrap_or("");
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240"><rect width="400" height="240" rx="16" fill="#101418"/><text x="24" y="52" fill="#f2efe6" font-family="monospace" font-size="26">Quitclaim lot #{id}</text><text x="24" y="100" fill="#9aa4ad" font-family="monospace" font-size="12">Title to</text><text x="24" y="122" fill="#f2efe6" font-family="monospace" font-size="12">{address}</text><text x="24" y="150" fill="#9aa4ad" font-family="monospace" font-size="12">Base Sepolia · Sablier stream {stream}</text><text x="24" y="210" fill="#d9a441" font-family="monospace" font-size="14">{state:?}</text></svg>"##,
+        stream = lot.source.id.0,
+        state = lot.state,
+    );
+    format!("data:image/svg+xml;base64,{}", BASE64_STANDARD.encode(svg))
+}
+
 fn token(id: LotId, lot: &Lot) -> Token {
     Token {
         token_id: id.to_string(),
         owner_id: lot.owner.clone(),
         metadata: Some(TokenMetadata {
             title: Some(format!("Quitclaim lot #{id}")),
-            description: lot.address.as_ref().map(|a| format!("Title to {a} on Base Sepolia")),
+            description: lot.address.as_ref().map(|a| format!("Title to {a} on Base Sepolia, holding Sablier stream {}", lot.source.id.0)),
+            media: Some(card(id, lot)),
             ..Default::default()
         }),
         approved_account_ids: None,
