@@ -40,7 +40,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `buy` credits proceeds in state with no cross-contract calls. Payouts are pulled; `withdraw_proceeds` zeroes before transferring and restores once on failure.
 - Use the MPC `recovery_id` as yParity as-is. Strip leading zeros from r/s before RLP.
 - Minting has no admin. `mint_proven` takes Sablier's `CreateLockupLinearStream` log, checks emitter, event, non-cancelable, non-transferable and that the recipient is the derived lot address, then has MPC attest that exact log (`expected_payload_hash`, computed with `near-mpc-contract-interface` pinned to the signer's revision). Any failure rolls the mint back.
-- Paths are `<issuer account>/<name>`, set by the contract. A front-runner minting someone else's stream gets a different address, so the recipient check fails.
+- Paths are `<minter account>/<name>`, set by the contract. A front-runner minting someone else's stream gets a different address, so the recipient check fails. The minter is the NEAR caller and royalty beneficiary; minting requires no source-sender authorization.
 - The lot address depends on the lot contract account plus the path. Changing either orphans every lot.
 
 ## Gotchas

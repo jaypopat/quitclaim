@@ -1,4 +1,4 @@
-//! Fixed-price sale with an issuer royalty and pulled payouts. `buy` is one synchronous call: it
+//! Fixed-price sale with a minter royalty and pulled payouts. `buy` is one synchronous call: it
 //! moves the title and credits proceeds in contract state, so title and credit can't diverge.
 
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use crate::{Contract, ContractExt, Listing, LotId, LotState, Payout};
 pub const MAX_ROYALTY_BPS: u16 = 1_000;
 const WITHDRAW_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 
-/// (seller, issuer royalty). Integer rounding favours the seller.
+/// (seller, minter royalty). Integer rounding favours the seller.
 pub fn split(price: u128, royalty_bps: u16) -> (u128, u128) {
     let royalty = price * royalty_bps as u128 / 10_000;
     (price - royalty, royalty)
@@ -58,10 +58,10 @@ impl Contract {
         require!(buyer != lot.owner, "the owner can't buy their own lot");
 
         let (seller_share, royalty) = split(listing.price.0, lot.royalty_bps);
-        let (seller, issuer) = (lot.owner.clone(), lot.issuer.clone());
+        let (seller, minter) = (lot.owner.clone(), lot.minter.clone());
         self.move_title(id, lot, buyer, Some("quitclaim sale"));
         self.credit(&seller, seller_share);
-        self.credit(&issuer, royalty);
+        self.credit(&minter, royalty);
     }
 
     /// Pull payment. The balance is zeroed before the transfer and restored once if it fails.
@@ -94,7 +94,7 @@ impl Contract {
         let lot = self.lot(id);
         let (seller_share, royalty) = split(balance.0, lot.royalty_bps);
         let mut payout: HashMap<AccountId, U128> = HashMap::new();
-        for (account, amount) in [(lot.owner, seller_share), (lot.issuer, royalty)] {
+        for (account, amount) in [(lot.owner, seller_share), (lot.minter, royalty)] {
             if amount > 0 {
                 payout.entry(account).or_insert(U128(0)).0 += amount;
             }

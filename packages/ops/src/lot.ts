@@ -21,29 +21,29 @@ export type Provisioned = {
 };
 
 /**
- * Issuer provisioning, with no trusted admin: derive the lot address in the issuer's namespace
- * (`<issuer>/<name>`), create a non-cancelable, non-transferable Sablier stream paying it, fund gas,
- * wait for the contract's finality, then the issuer mints. The contract decodes the stream's creation
+ * Lot provisioning, with no trusted admin: derive the lot address in the minter's namespace
+ * (`<minter>/<name>`), create a non-cancelable, non-transferable Sablier stream paying it, fund gas,
+ * wait for the contract's finality, then the minter mints. The contract decodes the stream's creation
  * log and has MPC attest it before the title exists.
  */
 export async function provision(opts: {
   contract: string;
   name: string;
   owner: string;
-  issuer: string;
+  minter: string;
   royaltyBps?: number;
   durationSec?: number;
   total?: bigint;
   gasFund?: bigint;
 }): Promise<Provisioned> {
   const token = env.token();
-  const address = await fetchLotAddress(opts.contract, `${opts.issuer}/${opts.name}`);
+  const address = await fetchLotAddress(opts.contract, `${opts.minter}/${opts.name}`);
   const stream = await sablier.createStream(address, token, opts.total ?? 1_000n * 10n ** 18n, opts.durationSec ?? 3_600);
   const title = await sablier.titleSearch(stream.id, address, token);
   if (!title.clean) throw new Error(`stream ${stream.id} fails title search: ${JSON.stringify(title)}`);
   const fundTx = await base.fund(address, opts.gasFund ?? 2_000_000_000_000_000n);
   await base.waitFinality(stream.block, await getFinality(opts.contract));
-  const mint = await call(opts.issuer, opts.contract, "mint_proven", {
+  const mint = await call(opts.minter, opts.contract, "mint_proven", {
     name: opts.name,
     owner_id: opts.owner,
     royalty_bps: opts.royaltyBps ?? 250,

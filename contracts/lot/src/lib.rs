@@ -104,9 +104,9 @@ impl Contract {
         }
     }
 
-    /// Mints a lot whose source is a Sablier stream the caller created, proven by MPC from the
-    /// stream's creation log. The path is `<caller>/<name>`, so a lot's address belongs to its
-    /// issuer's namespace: nobody else can mint a title over a stream paying that address.
+    /// Mints a lot from an MPC-proven Sablier creation log. The path is `<caller>/<name>`,
+    /// so the stream must pay the address in the minter's namespace. The caller chooses
+    /// the initial owner and receives the royalty; no source-sender authorization is required.
     ///
     /// The caller pays for the lot's storage; any excess deposit is refunded, and a mint that rolls
     /// back refunds the storage too.
@@ -121,8 +121,8 @@ impl Contract {
         let stream = source::decode(&evm_log, &self.lockup.into()).unwrap_or_else(|e| env::panic_str(e));
         source::verify_request(&evm_log, self.finality).unwrap_or_else(|e| env::panic_str(e));
         let before = env::storage_usage();
-        let issuer = env::predecessor_account_id();
-        let path = format!("{issuer}/{name}");
+        let minter = env::predecessor_account_id();
+        let path = format!("{minter}/{name}");
         require!(self.paths.insert(path.clone()), "path already used");
         let id = self.next_id;
         self.next_id += 1;
@@ -130,7 +130,7 @@ impl Contract {
             id,
             Lot {
                 owner: owner_id,
-                issuer,
+                minter,
                 path: path.clone(),
                 address: None,
                 token: format!("{:#x}", stream.token),
@@ -385,13 +385,13 @@ impl Contract {
 }
 
 impl Contract {
-    /// Frees the lot and its path and refunds the issuer's storage deposit.
+    /// Frees the lot and its path and refunds the minter's storage deposit.
     fn roll_back(&mut self, id: LotId, why: &str, storage: NearToken) -> Option<MintedLot> {
         log!("lot {} not minted: {}", id, why);
         if let Some(lot) = self.lots.remove(&id) {
             self.paths.remove(&lot.path);
             if !storage.is_zero() {
-                Promise::new(lot.issuer).transfer(storage).detach();
+                Promise::new(lot.minter).transfer(storage).detach();
             }
         }
         None
