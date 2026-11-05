@@ -11,8 +11,11 @@ export type Kind =
 export type LotState = "Minting" | "Active" | "Sealing" | "Clean";
 export type PromiseOrValueBoolean = boolean;
 export type PromiseOrValueLotState = "Minting" | "Active" | "Sealing" | "Clean";
+export type BuyResult = null;
+export type DelistResult = null;
 export type GetConfigResult = [string, string, Finality];
 export type GetLotResult = Lot | null;
+export type ListResult = null;
 export type MintResult = MintedLot | null;
 export type NftApproveResult = null;
 export type NftSupplyForOwnerResult = string;
@@ -21,11 +24,13 @@ export type NftTokensResult = Token[];
 export type NftTokensForOwnerResult = Token[];
 export type NftTotalSupplyResult = string;
 export type NftTransferResult = null;
+export type ProceedsOfResult = string;
 export type ProveResult = boolean;
 export type RebumpResult = string | null;
 export type RegisterSignatureResult = string;
 export type SealResult = RebumpResult | LotState;
 export type UnsealResult = null;
+export type WithdrawProceedsResult = boolean;
 
 export interface Fees {
   max_fee: string;
@@ -40,10 +45,21 @@ export interface Issued {
   seq: number;
   tx_hash?: string | null;
 }
+export interface Listing {
+  /**
+   * Price in yoctoNEAR.
+   */
+  price: string;
+  version: number;
+}
 export interface Lot {
   address?: string | null;
   issued: Issued[];
   issuer: string;
+  /**
+   * Only exists while Clean. Bound to the version it was listed at.
+   */
+  listing?: Listing | null;
   /**
    * Lowest nonce not yet proven consumed.
    */
@@ -51,6 +67,10 @@ export interface Lot {
   next_seq: number;
   owner: string;
   path: string;
+  /**
+   * Issuer royalty on Quitclaim sales, in basis points. Fixed at mint.
+   */
+  royalty_bps: number;
   sign_in_flight: boolean;
   state: LotState;
   version: number;
@@ -68,6 +88,11 @@ export interface NFTContractMetadata {
   reference_hash?: Base64VecU8 | null;
   spec: string;
   symbol: string;
+}
+export interface Payout {
+  payout: {
+    [k: string]: string;
+  };
 }
 export interface Token {
   approved_account_ids?: {
@@ -91,15 +116,27 @@ export interface TokenMetadata {
   title?: string | null;
   updated_at?: string | null;
 }
+export interface BuyArgs {
+  id: number;
+  version: number;
+}
+export interface DelistArgs {
+  id: number;
+}
 export interface GetConfigArgs {}
 export interface GetLotArgs {
   id: number;
+}
+export interface ListArgs {
+  id: number;
+  price: string;
 }
 export interface MintArgs {
   path: string;
   vesting: string;
   owner_id: string;
   issuer: string;
+  royalty_bps: number;
 }
 export interface NftApproveArgs {
   token_id: string;
@@ -107,6 +144,11 @@ export interface NftApproveArgs {
   msg?: string | null;
 }
 export interface NftMetadataArgs {}
+export interface NftPayoutArgs {
+  token_id: string;
+  balance: string;
+  max_len_payout?: number | null;
+}
 export interface NftSupplyForOwnerArgs {
   account_id: string;
 }
@@ -135,6 +177,9 @@ export interface NftTransferCallArgs {
   approval_id?: number | null;
   memo?: string | null;
   msg: string;
+}
+export interface ProceedsOfArgs {
+  account_id: string;
 }
 export interface ProveArgs {
   id: number;
@@ -169,8 +214,10 @@ export interface SealArgs {
 export interface UnsealArgs {
   id: number;
 }
+export interface WithdrawProceedsArgs {}
 
 export type NftMetadataResult = NFTContractMetadata;
+export type NftPayoutResult = Payout;
 export type NftTransferCallResult = PromiseOrValueBoolean;
 export type RequestClaimResult = RebumpResult;
 export type RescueResult = RebumpResult;
@@ -179,14 +226,19 @@ export interface LotViews {
   get_config: { args: GetConfigArgs; result: GetConfigResult; payable: false };
   get_lot: { args: GetLotArgs; result: GetLotResult; payable: false };
   nft_metadata: { args: NftMetadataArgs; result: NftMetadataResult; payable: false };
+  nft_payout: { args: NftPayoutArgs; result: NftPayoutResult; payable: false };
   nft_supply_for_owner: { args: NftSupplyForOwnerArgs; result: NftSupplyForOwnerResult; payable: false };
   nft_token: { args: NftTokenArgs; result: NftTokenResult; payable: false };
   nft_tokens: { args: NftTokensArgs; result: NftTokensResult; payable: false };
   nft_tokens_for_owner: { args: NftTokensForOwnerArgs; result: NftTokensForOwnerResult; payable: false };
   nft_total_supply: { args: NftTotalSupplyArgs; result: NftTotalSupplyResult; payable: false };
+  proceeds_of: { args: ProceedsOfArgs; result: ProceedsOfResult; payable: false };
 }
 
 export interface LotCalls {
+  buy: { args: BuyArgs; result: BuyResult; payable: true };
+  delist: { args: DelistArgs; result: DelistResult; payable: false };
+  list: { args: ListArgs; result: ListResult; payable: false };
   mint: { args: MintArgs; result: MintResult; payable: false };
   nft_approve: { args: NftApproveArgs; result: NftApproveResult; payable: true };
   nft_transfer: { args: NftTransferArgs; result: NftTransferResult; payable: true };
@@ -198,4 +250,5 @@ export interface LotCalls {
   rescue: { args: RescueArgs; result: RescueResult; payable: true };
   seal: { args: SealArgs; result: SealResult; payable: true };
   unseal: { args: UnsealArgs; result: UnsealResult; payable: false };
+  withdraw_proceeds: { args: WithdrawProceedsArgs; result: WithdrawProceedsResult; payable: false };
 }
