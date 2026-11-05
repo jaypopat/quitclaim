@@ -34,3 +34,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 SPEC.md
+spikes/
+
+# rust / near
+target/
+
+# foundry
+contracts/vesting/out/
+contracts/vesting/cache/
+contracts/vesting/broadcast/

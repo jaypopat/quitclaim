@@ -1,0 +1,13 @@
+{
+  "name": "@quitclaim/ops",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "lot-address": "bun src/lot-address.ts"
+  },
+  "dependencies": {
+    "@quitclaim/shared": "workspace:*",
+    "near-api-js": "^7.4.0",
+    "viem": "^2.57.16"
+  }
+}
