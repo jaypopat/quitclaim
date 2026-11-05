@@ -1,6 +1,6 @@
 /**
  * Minting without a trusted admin: a front-runner can't take a title over someone else's stream,
- * a cancelable stream is refused, and the issuer's own mint is proven by MPC from the creation log.
+ * a cancelable stream is refused, and Alice mints a stream created by the separate EVM funder.
  */
 import { fetchLotAddress } from "@quitclaim/shared";
 import * as base from "../base.ts";
@@ -26,9 +26,9 @@ export async function minting(run: Run) {
 
   const mine = await call(alice, contract, "mint_proven", { name, owner_id: alice, royalty_bps: 250, log: stream.log }, { deposit: MINT_DEPOSIT });
   const lot = mine.ok && mine.value ? await lotOf(mine.value.id) : null;
-  run.record("alice mints", "MPC attests the creation log; the title binds the stream and token, issuer = alice",
+  run.record("alice mints", "MPC attests the creation log; the title binds the stream and token, minter = alice",
     lot ? `lot ${mine.ok && mine.value?.id} ${lot.state}, path ${lot.path}, stream ${lot.source?.id}` : mine.ok ? "rolled back" : mine.error,
-    !!lot && lot.state === "Active" && lot.path === `${alice}/${name}` && lot.issuer === alice && lot.source?.id === stream.id.toString(),
+    !!lot && lot.state === "Active" && lot.path === `${alice}/${name}` && lot.minter === alice && lot.source?.id === stream.id.toString(),
     [mine.url]);
   if (mine.ok && mine.value) run.lots.push({ id: mine.value.id, address: mine.value.address });
 
@@ -36,7 +36,7 @@ export async function minting(run: Run) {
   const otherAddress = await fetchLotAddress(contract, `${alice}/${otherName}`);
   const cancelable = await sablier.createStream(otherAddress, token, 10n * 10n ** 18n, 3_600, { cancelable: true });
   const refused = await call(alice, contract, "mint_proven", { name: otherName, owner_id: alice, royalty_bps: 0, log: cancelable.log }, { deposit: MINT_DEPOSIT });
-  run.record("mint against a cancelable stream", "refused before any MPC call: the issuer could take the position back",
+  run.record("mint against a cancelable stream", "refused before any MPC call: the stream sender could take the position back",
     refused.ok ? "minted!" : refused.error, !refused.ok && refused.error.includes("stream is cancelable"),
     [`stream ${base.txUrl(cancelable.tx)}`, refused.url]);
 }

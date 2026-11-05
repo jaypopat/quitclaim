@@ -21,6 +21,8 @@
     "lot-address": "bun packages/ops/src/lot-address.ts",
     "abi": "bun packages/shared/scripts/gen-abi.ts",
     "e2e": "bun packages/ops/src/e2e/index.ts",
+    "heist": "bun --no-env-file packages/ops/src/heist.ts",
+    "test:heist": "bun --no-env-file packages/ops/src/heist-live.ts",
     "keeper": "bun packages/ops/src/keeper.ts",
     "freeze": "bun packages/ops/src/freeze.ts"
   },

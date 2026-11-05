@@ -20,7 +20,7 @@ struct TestChain {
     mpc: AccountId,
     alice: AccountId,
     bob: AccountId,
-    issuer: AccountId,
+    minter: AccountId,
 }
 
 impl TestChain {
@@ -38,14 +38,14 @@ impl TestChain {
             mpc: "mpc.sandbox".parse()?,
             alice: "alice.sandbox".parse()?,
             bob: "bob.sandbox".parse()?,
-            issuer: "issuer.sandbox".parse()?,
+            minter: "minter.sandbox".parse()?,
         };
         for id in [
             &chain.lot,
             &chain.mpc,
             &chain.alice,
             &chain.bob,
-            &chain.issuer,
+            &chain.minter,
         ] {
             chain
                 .sandbox
@@ -118,7 +118,7 @@ impl TestChain {
 
     async fn mint(&self, name: &str) -> Result<Value> {
         self.call(
-            &self.issuer,
+            &self.minter,
             &self.lot,
             "mint_proven",
             json!({
@@ -165,7 +165,7 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
     let c = TestChain::start().await?;
     c.call(&c.mpc, &c.mpc, "set_failure", json!({"fail":true}), 0)
         .await?;
-    let before = Account(c.issuer.clone())
+    let before = Account(c.minter.clone())
         .tokens()
         .near_balance()
         .fetch_from(&c.network)
@@ -181,7 +181,7 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
         .transaction()
         .gas(NearGas::from_tgas(300))
         .deposit(NearToken::from_near(1))
-        .with_signer(c.issuer.clone(), c.signer.clone())
+        .with_signer(c.minter.clone(), c.signer.clone())
         .send_to(&c.network)
         .await?
         .into_result()?;
@@ -193,7 +193,7 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
         .sum();
     assert_eq!(c.view("nft_total_supply", json!({})).await?, "0");
     assert_eq!(c.view("get_lot", json!({"id":0})).await?, Value::Null);
-    let after = Account(c.issuer.clone())
+    let after = Account(c.minter.clone())
         .tokens()
         .near_balance()
         .fetch_from(&c.network)
@@ -224,7 +224,10 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
         let error = c.call(&c.alice, &c.lot, method, args, 0).await.unwrap_err();
         assert!(error.to_string().contains("private"), "{method}: {error}");
     }
-    assert_eq!(c.view("get_lot", json!({"id":1})).await?["state"], "Active");
+    let lot = c.view("get_lot", json!({"id":1})).await?;
+    assert_eq!(lot["state"], "Active");
+    assert_eq!(lot["owner"], c.alice.as_str());
+    assert_eq!(lot["minter"], c.minter.as_str());
     Ok(())
 }
 

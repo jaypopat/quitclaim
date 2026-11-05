@@ -104,8 +104,8 @@ fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> Creati
 
 /// Runs the whole `mint_proven` chain with the given derived key and MPC verdict.
 #[allow(clippy::too_many_arguments)]
-fn mint(c: &mut Contract, issuer: AccountId, name: &str, owner: AccountId, royalty_bps: u16, key: &str, log: CreationLog, verdict: Result<Value, PromiseError>) -> Option<MintedLot> {
-    call(issuer, ONE_NEAR);
+fn mint(c: &mut Contract, minter: AccountId, name: &str, owner: AccountId, royalty_bps: u16, key: &str, log: CreationLog, verdict: Result<Value, PromiseError>) -> Option<MintedLot> {
+    call(minter, ONE_NEAR);
     let _ = c.mint_proven(name.into(), owner, royalty_bps, log.clone());
     let id = c.next_id - 1;
     let recipient = format!("{:#x}", source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap()).unwrap().recipient);
@@ -223,13 +223,13 @@ fn paths_are_unique() {
 }
 
 #[test]
-fn paths_are_namespaced_by_issuer() {
+fn paths_are_namespaced_by_minter() {
     let mut c = active_lot();
     call(bob(), ONE_NEAR);
     let _ = c.mint_proven("lot-a".into(), bob(), 250, creation_log(LOT_ADDR, false, false));
     let (a, b) = (c.get_lot(0).unwrap(), c.get_lot(1).unwrap());
     assert_eq!((a.path.as_str(), b.path.as_str()), ("admin.testnet/lot-a", "bob.testnet/lot-a"));
-    assert_eq!((a.issuer, b.issuer), (admin(), bob()));
+    assert_eq!((a.minter, b.minter), (admin(), bob()));
 }
 
 #[test]
@@ -613,14 +613,14 @@ fn only_a_clean_lot_can_be_listed() {
 }
 
 #[test]
-fn buy_moves_the_title_and_credits_seller_and_issuer() {
+fn buy_moves_the_title_and_credits_seller_and_minter() {
     let mut c = listed_lot();
     call(bob(), PRICE);
     c.buy(0, 1);
     let lot = c.get_lot(0).unwrap();
     assert_eq!((lot.owner, lot.state, lot.version, lot.listing), (bob(), LotState::Active, 2, None));
     assert_eq!(c.proceeds_of(alice()).0, 975_000, "seller gets the price minus 2.5%");
-    assert_eq!(c.proceeds_of(admin()).0, 25_000, "issuer gets 2.5%");
+    assert_eq!(c.proceeds_of(admin()).0, 25_000, "minter gets 2.5%");
 }
 
 #[test]
@@ -693,7 +693,7 @@ fn nft_payout_matches_what_buy_credits() {
 }
 
 #[test]
-fn issuer_selling_their_own_lot_gets_the_sum() {
+fn minter_selling_their_own_lot_gets_the_sum() {
     let mut c = new_contract(Finality::Safe);
     assert!(mint(&mut c, alice(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested()).is_some());
     call(alice(), 1);
@@ -745,7 +745,7 @@ fn mint_binds_the_token_and_stream_from_the_proven_log() {
     let c = active_lot();
     let lot = c.get_lot(0).unwrap();
     let source = Source { kind: "sablier-lockup-v4".into(), contract: LOCKUP.to_lowercase(), id: U128(7) };
-    assert_eq!((lot.token, lot.source, lot.issuer), (TOKEN.to_lowercase(), source, admin()));
+    assert_eq!((lot.token, lot.source, lot.minter), (TOKEN.to_lowercase(), source, admin()));
 }
 
 #[test]
@@ -770,7 +770,7 @@ fn oversized_log_data_is_refused() {
 
 #[test]
 #[should_panic(expected = "storage plus the MPC deposit")]
-fn the_issuer_pays_for_storage() {
+fn the_minter_pays_for_storage() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
     let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));

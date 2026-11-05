@@ -13,7 +13,7 @@ import { alice, aliceEvm, bob, contract, keeper, lotOf, raw, transferTitle, with
 import { firstLine, settleLinks, type Run } from "./report.ts";
 
 export async function recovery(run: Run) {
-  const p = await provision({ contract, name: `e2e-recovery-${run.started.getTime()}`, owner: alice, issuer: alice });
+  const p = await provision({ contract, name: `e2e-recovery-${run.started.getTime()}`, owner: alice, minter: alice });
   run.lots.push({ id: p.id, address: p.address });
   run.record("provision", "fresh lot with a clean Sablier stream", `lot ${p.id} at ${p.address}, stream ${p.streamId}`, p.title.clean, [p.mint.url]);
   const id = p.id;
@@ -61,5 +61,5 @@ export async function recovery(run: Run) {
   const moved = await lotOf(id);
   const proceedsAfter = await view(contract, "proceeds_of", { account_id: alice });
   run.record("direct transfer", "nft_transfer from Clean moves the title and pays no royalty",
-    `${moved.owner} ${moved.state}; issuer proceeds ${proceedsBefore} -> ${proceedsAfter}`, t.ok && moved.owner === bob && proceedsBefore === proceedsAfter, [t.url]);
+    `${moved.owner} ${moved.state}; minter proceeds ${proceedsBefore} -> ${proceedsAfter}`, t.ok && moved.owner === bob && proceedsBefore === proceedsAfter, [t.url]);
 }

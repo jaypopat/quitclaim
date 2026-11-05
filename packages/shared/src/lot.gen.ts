@@ -74,11 +74,14 @@ export interface Listing {
 export interface Lot {
   address?: string | null;
   issued: Issued[];
-  issuer: string;
   /**
    * Only exists while Clean. Bound to the version it was listed at.
    */
   listing?: Listing | null;
+  /**
+   * The NEAR mint caller and royalty beneficiary, independent of the source stream's sender.
+   */
+  minter: string;
   /**
    * Lowest nonce not yet proven consumed.
    */
@@ -87,7 +90,7 @@ export interface Lot {
   owner: string;
   path: string;
   /**
-   * Issuer royalty on Quitclaim sales, in basis points. Fixed at mint.
+   * Minter royalty on Quitclaim sales, in basis points. Fixed at mint.
    */
   royalty_bps: number;
   sign_in_flight: boolean;

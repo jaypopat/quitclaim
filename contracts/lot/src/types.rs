@@ -51,7 +51,8 @@ pub struct Issued {
 #[derive(Clone, Debug)]
 pub struct Lot {
     pub owner: AccountId,
-    pub issuer: AccountId,
+    /// The NEAR mint caller and royalty beneficiary, independent of the source stream's sender.
+    pub minter: AccountId,
     pub path: String,
     pub address: Option<String>,
     /// The ERC-20 the lot holds, fixed at mint. The only contract a lot signs calls to.
@@ -66,7 +67,7 @@ pub struct Lot {
     pub issued: Vec<Issued>,
     pub next_seq: u32,
     pub sign_in_flight: bool,
-    /// Issuer royalty on Quitclaim sales, in basis points. Fixed at mint.
+    /// Minter royalty on Quitclaim sales, in basis points. Fixed at mint.
     pub royalty_bps: u16,
     /// Only exists while Clean. Bound to the version it was listed at.
     pub listing: Option<Listing>,

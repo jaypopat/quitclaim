@@ -1,23 +1,24 @@
 /**
  * The handover: Alice withdraws, keeps a signed withdrawal, seals; the burn is proven; her retained
  * withdrawal is rejected by Base; an outsider pulls the stream while the lot is listed; Bob buys with
- * an issuer royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
+ * a minter royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
  * to Carol: three owners, one address.
  */
-import { isBurn } from "@quitclaim/shared";
+import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
-import { settle } from "../keeper.ts";
+import { provenMined, settle } from "../keeper.ts";
 import { buy, list, position, provision, pullSource, requestTransfer, seal, withdraw } from "../lot.ts";
 import { view } from "../near.ts";
 import * as sablier from "../sablier.ts";
-import { alice, aliceEvm, bob, bobEvm, carol, contract, issuer, keeper, lotOf, raw, transferTitle, withdrawTo } from "./context.ts";
+import { alice, aliceEvm, bob, bobEvm, carol, contract, minter, keeper, lotOf, raw, transferTitle, withdrawTo } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
+import { retainedBytes } from "../heist-evidence.ts";
 
 const PRICE = 10n ** 23n;
 const ROYALTY_BPS = 250;
 
 export async function handover(run: Run) {
-  const p = await provision({ contract, name: `e2e-handover-${run.started.getTime()}`, owner: alice, issuer, royaltyBps: ROYALTY_BPS });
+  const p = await provision({ contract, name: `e2e-handover-${run.started.getTime()}`, owner: alice, minter, royaltyBps: ROYALTY_BPS });
   run.lots.push({ id: p.id, address: p.address });
   run.record("provision", "Sablier stream pays the lot; title search clean; contract learns the address from MPC",
     `lot ${p.id} at ${p.address}, stream ${p.streamId}, ${JSON.stringify(p.title)}`, p.title.clean,
@@ -58,7 +59,7 @@ export async function handover(run: Run) {
   run.record("alice broadcasts the retained withdrawal", "Base rejects it: its nonce was consumed", firstLine(heist), heist?.status === "nonce-too-low");
 
   const sellerBefore = BigInt(await view(contract, "proceeds_of", { account_id: alice }));
-  const issuerBefore = BigInt(await view(contract, "proceeds_of", { account_id: issuer }));
+  const minterBefore = BigInt(await view(contract, "proceeds_of", { account_id: minter }));
   const l = await list(contract, alice, id, PRICE);
   const listed = await lotOf(id);
   run.record("alice lists the Clean lot", "listing bound to the current version", `price ${listed.listing?.price}, version ${listed.listing?.version}`,
@@ -77,15 +78,15 @@ export async function handover(run: Run) {
   const moved = await lotOf(id);
   const royalty = (PRICE * BigInt(ROYALTY_BPS)) / 10_000n;
   const sellerGot = BigInt(await view(contract, "proceeds_of", { account_id: alice })) - sellerBefore;
-  const issuerGot = BigInt(await view(contract, "proceeds_of", { account_id: issuer })) - issuerBefore;
-  run.record("bob buys", "one call moves the title and credits seller and issuer (2.5% royalty)",
-    `${moved.owner} ${moved.state} v${moved.version}; seller +${sellerGot}, issuer +${issuerGot}`,
-    sale.ok && moved.owner === bob && moved.state === "Active" && sellerGot === PRICE - royalty && issuerGot === royalty, [sale.url]);
+  const minterGot = BigInt(await view(contract, "proceeds_of", { account_id: minter })) - minterBefore;
+  run.record("bob buys", "one call moves the title and credits seller and minter (2.5% royalty)",
+    `${moved.owner} ${moved.state} v${moved.version}; seller +${sellerGot}, minter +${minterGot}`,
+    sale.ok && moved.owner === bob && moved.state === "Active" && sellerGot === PRICE - royalty && minterGot === royalty, [sale.url]);
 
   const ws = await withdraw(contract, alice);
-  const wi = await withdraw(contract, issuer);
-  run.record("seller and issuer withdraw", "pulled payouts transfer and zero the balances",
-    `seller ${ws.ok ? ws.value : ws.error}, issuer ${wi.ok ? wi.value : wi.error}`,
+  const wi = await withdraw(contract, minter);
+  run.record("seller and minter withdraw", "pulled payouts transfer and zero the balances",
+    `seller ${ws.ok ? ws.value : ws.error}, minter ${wi.ok ? wi.value : wi.error}`,
     ws.ok && ws.value === true && wi.ok && wi.value === true && (await view(contract, "proceeds_of", { account_id: alice })) === "0", [ws.url, wi.url]);
 
   const locked = await requestTransfer(contract, alice, id, aliceEvm, { amount: 1n, gasLimit: 80_000 });
@@ -101,16 +102,31 @@ export async function handover(run: Run) {
     `bob holds ${bobTokens}, alice ${aliceBefore} -> ${aliceAfter}, title clean=${title.clean}`,
     wb.req.ok && bobTokens > 0n && aliceBefore === aliceAfter && title.clean, [...wb.links, ...settleLinks(sb.steps)]);
 
-  const issuerBeforeResale = BigInt(await view(contract, "proceeds_of", { account_id: issuer }));
+  const minterBeforeResale = BigInt(await view(contract, "proceeds_of", { account_id: minter }));
   const bs = await seal(contract, bob, id);
   const bobLot = await lotOf(id);
   const bl = await list(contract, bob, id, PRICE);
   const resale = await buy(contract, carol, id);
   const third = await lotOf(id);
-  const issuerGotAgain = BigInt(await view(contract, "proceeds_of", { account_id: issuer })) - issuerBeforeResale;
+  const minterGotAgain = BigInt(await view(contract, "proceeds_of", { account_id: minter })) - minterBeforeResale;
   const resold = await sablier.titleSearch(p.streamId, p.address, p.token);
-  run.record("bob resells to carol", "Bob's lot has nothing outstanding, so sealing is Clean at once; Carol buys; three owners, one address; the issuer earns again",
-    `sealed ${bobLot.state}; owner ${third.owner} v${third.version}; address ${third.address}; issuer +${issuerGotAgain}; title clean=${resold.clean}`,
-    bs.ok && bobLot.state === "Clean" && bl.ok && resale.ok && third.owner === carol && third.address === p.address.toLowerCase() && issuerGotAgain === royalty && resold.clean,
+  run.record("bob resells to carol", "Bob's lot has nothing outstanding, so sealing is Clean at once; Carol buys; three owners, one address; the minter earns again",
+    `sealed ${bobLot.state}; owner ${third.owner} v${third.version}; address ${third.address}; minter +${minterGotAgain}; title clean=${resold.clean}`,
+    bs.ok && bobLot.state === "Clean" && bl.ok && resale.ok && third.owner === carol && third.address === p.address.toLowerCase() && minterGotAgain === royalty && resold.clean,
     [bs.url, bl.url, resale.url]);
+
+  const consumed = provenMined(s1.steps);
+  const paid = provenMined(sb.steps);
+  if (retained && consumed && paid && sale.ok) {
+    run.heist = {
+      chainId: config.evm.chainId, contract, lot: { id, address: p.address, token: p.token },
+      seller: { near: alice, evm: aliceEvm }, buyer: { near: bob, evm: bobEvm },
+      retained: retainedBytes(retained), consumingTx: consumed.mined.tx,
+      proof: { hash: consumed.proof.outcome.tx, signer: keeper }, sale: { hash: sale.tx, signer: bob },
+      buyerWithdrawal: paid.mined.tx,
+    };
+  }
+  run.record("heist evidence captured", "retained withdrawal, proven burn, sale and buyer withdrawal available",
+    run.heist ? "complete" : "missing evidence", !!run.heist);
+
 }

@@ -1,4 +1,4 @@
-//! Proving a lot's source at mint. The issuer hands in Sablier's `CreateLockupLinearStream` log; the
+//! Proving a lot's source at mint. The minter hands in Sablier's `CreateLockupLinearStream` log; the
 //! contract decodes it with Sablier's own event definition, checks what a buyer relies on (emitter,
 //! recipient, non-cancelable, non-transferable, token), and asks MPC to attest that exact log mined
 //! at the contract's finality. The request and its expected payload hash come from `near-mpc-sdk`.
