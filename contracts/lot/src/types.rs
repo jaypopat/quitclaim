@@ -1,4 +1,6 @@
 use near_sdk::json_types::U128;
+use std::collections::HashMap;
+
 use near_sdk::{near, AccountId};
 
 pub type LotId = u32;
@@ -59,6 +61,10 @@ pub struct Lot {
     pub issued: Vec<Issued>,
     pub next_seq: u32,
     pub sign_in_flight: bool,
+    /// Issuer royalty on Quitclaim sales, in basis points. Fixed at mint.
+    pub royalty_bps: u16,
+    /// Only exists while Clean. Bound to the version it was listed at.
+    pub listing: Option<Listing>,
 }
 
 #[near(serializers = [json, borsh])]
@@ -84,4 +90,19 @@ impl Finality {
 pub struct MintedLot {
     pub id: LotId,
     pub address: String,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Listing {
+    /// Price in yoctoNEAR.
+    pub price: U128,
+    pub version: u32,
+}
+
+/// NEP-199 payout, as a view of exactly what `buy` credits.
+#[near(serializers = [json])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Payout {
+    pub payout: HashMap<AccountId, U128>,
 }

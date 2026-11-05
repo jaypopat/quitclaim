@@ -59,7 +59,7 @@ fn as_contract() {
 fn active_lot() -> Contract {
     call(admin(), 0);
     let mut c = Contract::new(acc("v1.signer-prod.testnet"), admin(), Finality::Safe);
-    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin());
+    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin(), 250);
     as_contract();
     assert_eq!(c.on_derived(0, Ok(LOT_KEY.into())), Some(MintedLot { id: 0, address: LOT_ADDR.into() }));
     c
@@ -95,12 +95,12 @@ fn mint_learns_the_address_from_mpc() {
 fn failed_derivation_rolls_the_mint_back() {
     call(admin(), 0);
     let mut c = Contract::new(acc("v1.signer-prod.testnet"), admin(), Finality::Safe);
-    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin());
+    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin(), 250);
     as_contract();
     assert_eq!(c.on_derived(0, Err(PromiseError::Failed)), None);
     assert!(c.get_lot(0).is_none());
     call(admin(), 0);
-    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin());
+    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin(), 250);
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn failed_derivation_rolls_the_mint_back() {
 fn paths_are_unique() {
     let mut c = active_lot();
     call(admin(), 0);
-    let _ = c.mint("lot-a".into(), VESTING.into(), bob(), admin());
+    let _ = c.mint("lot-a".into(), VESTING.into(), bob(), admin(), 250);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn paths_are_unique() {
 fn only_admin_mints() {
     let mut c = active_lot();
     call(alice(), 0);
-    let _ = c.mint("lot-b".into(), VESTING.into(), alice(), admin());
+    let _ = c.mint("lot-b".into(), VESTING.into(), alice(), admin(), 250);
 }
 
 #[test]
@@ -469,4 +469,152 @@ fn a_proof_in_flight_does_not_block_another() {
     assert!(c.on_proved(0, 0, attested()), "the honest proof still lands");
     as_contract();
     assert!(!c.on_proved(0, 0, attested()), "a duplicate success is stale");
+}
+
+const PRICE: u128 = 1_000_000;
+
+fn clean_lot() -> Contract {
+    let mut c = active_lot();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(1, 1));
+    assert_eq!(c.get_lot(0).unwrap().state, LotState::Clean);
+    c
+}
+
+fn listed_lot() -> Contract {
+    let mut c = clean_lot();
+    call(alice(), 0);
+    c.list(0, U128(PRICE));
+    c
+}
+
+#[test]
+#[should_panic(expected = "lot is not Clean")]
+fn only_a_clean_lot_can_be_listed() {
+    let mut c = active_lot();
+    call(alice(), 0);
+    c.list(0, U128(PRICE));
+}
+
+#[test]
+fn buy_moves_the_title_and_credits_seller_and_issuer() {
+    let mut c = listed_lot();
+    call(bob(), PRICE);
+    c.buy(0, 1);
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.owner, lot.state, lot.version, lot.listing), (bob(), LotState::Active, 2, None));
+    assert_eq!(c.proceeds_of(alice()).0, 975_000, "seller gets the price minus 2.5%");
+    assert_eq!(c.proceeds_of(admin()).0, 25_000, "issuer gets 2.5%");
+}
+
+#[test]
+#[should_panic(expected = "attach exactly the listing price")]
+fn buy_needs_the_exact_price() {
+    let mut c = listed_lot();
+    call(bob(), PRICE - 1);
+    c.buy(0, 1);
+}
+
+#[test]
+#[should_panic(expected = "listing is stale")]
+fn buy_is_bound_to_the_version_the_buyer_saw() {
+    let mut c = listed_lot();
+    call(bob(), PRICE);
+    c.buy(0, 0);
+}
+
+#[test]
+#[should_panic(expected = "lot is not listed")]
+fn unseal_cancels_the_listing() {
+    let mut c = listed_lot();
+    call(alice(), 0);
+    c.unseal(0);
+    call(bob(), PRICE);
+    c.buy(0, 2);
+}
+
+#[test]
+#[should_panic(expected = "the owner can't buy their own lot")]
+fn owner_cannot_buy() {
+    let mut c = listed_lot();
+    call(alice(), PRICE);
+    c.buy(0, 1);
+}
+
+#[test]
+#[should_panic(expected = "lot is not listed")]
+fn a_sold_lot_cannot_be_bought_again() {
+    let mut c = listed_lot();
+    call(bob(), PRICE);
+    c.buy(0, 1);
+    call(acc("carol.testnet"), PRICE);
+    c.buy(0, 2);
+}
+
+#[test]
+#[should_panic(expected = "royalty above the 10% cap")]
+fn royalty_is_capped_at_mint() {
+    call(admin(), 0);
+    let mut c = Contract::new(acc("v1.signer-prod.testnet"), admin(), Finality::Safe);
+    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin(), sale::MAX_ROYALTY_BPS + 1);
+}
+
+#[test]
+fn rounding_favours_the_seller() {
+    assert_eq!(sale::split(39, 250), (39, 0));
+    assert_eq!(sale::split(400, 250), (390, 10));
+}
+
+#[test]
+fn nft_payout_matches_what_buy_credits() {
+    let mut c = listed_lot();
+    call(alice(), 0);
+    let payout = c.nft_payout("0".into(), U128(PRICE), Some(2)).payout;
+    call(bob(), PRICE);
+    c.buy(0, 1);
+    assert_eq!(payout.get(&alice()).map(|v| v.0), Some(c.proceeds_of(alice()).0));
+    assert_eq!(payout.get(&admin()).map(|v| v.0), Some(c.proceeds_of(admin()).0));
+}
+
+#[test]
+fn issuer_selling_their_own_lot_gets_the_sum() {
+    call(admin(), 0);
+    let mut c = Contract::new(acc("v1.signer-prod.testnet"), admin(), Finality::Safe);
+    let _ = c.mint("lot-a".into(), VESTING.into(), alice(), alice(), 250);
+    as_contract();
+    let _ = c.on_derived(0, Ok(LOT_KEY.into()));
+    call(alice(), 1);
+    let _ = c.seal(0, fees(1, 1));
+    c.list(0, U128(PRICE));
+    let payout = c.nft_payout("0".into(), U128(PRICE), None).payout;
+    assert_eq!((payout.len(), payout.get(&alice()).map(|v| v.0)), (1, Some(PRICE)));
+    call(bob(), PRICE);
+    c.buy(0, 1);
+    assert_eq!(c.proceeds_of(alice()).0, PRICE);
+}
+
+#[test]
+fn withdraw_zeroes_first_and_restores_once_on_failure() {
+    let mut c = listed_lot();
+    call(bob(), PRICE);
+    c.buy(0, 1);
+    call(alice(), 0);
+    let _ = c.withdraw_proceeds();
+    assert_eq!(c.proceeds_of(alice()).0, 0, "zeroed before the transfer");
+    as_contract();
+    assert!(!c.on_withdraw(alice(), U128(975_000), Err(PromiseError::Failed)));
+    assert_eq!(c.proceeds_of(alice()).0, 975_000, "restored after a failed transfer");
+    call(alice(), 0);
+    let _ = c.withdraw_proceeds();
+    as_contract();
+    assert!(c.on_withdraw(alice(), U128(975_000), Ok(())));
+    assert_eq!(c.proceeds_of(alice()).0, 0);
+}
+
+#[test]
+#[should_panic(expected = "no proceeds")]
+fn withdraw_with_nothing_owed_fails() {
+    let mut c = active_lot();
+    call(bob(), 0);
+    let _ = c.withdraw_proceeds();
 }
