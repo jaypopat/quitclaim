@@ -18,31 +18,18 @@ const GAS_PRICE_ORACLE: Address = "0x420000000000000000000000000000000000000F";
 const oracleAbi = [
   { type: "function", name: "getL1Fee", stateMutability: "view", inputs: [{ type: "bytes" }], outputs: [{ type: "uint256" }] },
 ] as const;
-const vestingAbi = [
-  { type: "function", name: "claim", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "token", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "claimed", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-] as const;
 const erc20Abi = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
 ] as const;
 
 export const pub = createPublicClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl) });
-const funder = () => createWalletClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl), account: privateKeyToAccount(env.funderKey()) });
+export const funderAccount = () => privateKeyToAccount(env.funderKey());
+export const wallet = () => createWalletClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl), account: funderAccount() });
+const funder = wallet;
 
 export const txUrl = (hash: string) => `${config.evm.explorer}/tx/${hash}`;
 
-export async function deployVesting(beneficiary: Address, durationSec: bigint, total: bigint) {
-  const artifact = await Bun.file(new URL("../../../contracts/vesting/out/MockVesting.sol/MockVesting.json", import.meta.url)).json();
-  const hash = await funder().deployContract({
-    abi: artifact.abi,
-    bytecode: artifact.bytecode.object as Hex,
-    args: [beneficiary, durationSec, total],
-  });
-  const receipt = await pub.waitForTransactionReceipt({ hash });
-  if (!receipt.contractAddress) throw new Error(`vesting deploy failed: ${hash}`);
-  return { address: receipt.contractAddress, tx: hash };
-}
 
 /** Floor fees for a new tx: 2x the current base fee plus a 1 Mwei minimum tip. */
 export async function floorFees() {
@@ -52,9 +39,16 @@ export async function floorFees() {
   return { maxFee: 2n * (block.baseFeePerGas ?? 0n) + maxPrio, maxPrio };
 }
 
-export async function estimateClaimGas(vesting: Address, lot: Address, to: Address) {
-  const gas = await pub.estimateGas({ account: lot, to: vesting, data: encodeFunctionData({ abi: vestingAbi, functionName: "claim", args: [to] }) });
-  return (gas * 13n) / 10n;
+export async function estimateTransferGas(token: Address, lot: Address, to: Address, amount: bigint) {
+  const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to, amount] });
+  return ((await pub.estimateGas({ account: lot, to: token, data })) * 13n) / 10n;
+}
+
+/** Funder sends tokens, e.g. to seed a lot or simulate an external payment. */
+export async function sendTokens(token: Address, to: Address, amount: bigint) {
+  const hash = await funder().writeContract({ address: token, abi: erc20Abi, functionName: "transfer", args: [to, amount] });
+  await pub.waitForTransactionReceipt({ hash });
+  return hash;
 }
 
 /** Worst-case cost of a signed tx: gas * maxFee + value + Base's L1 data fee. */
@@ -112,7 +106,6 @@ export async function waitFinality(block: bigint, finality: Finality, pollMs = 1
   }
 }
 
-export async function tokenBalance(vesting: Address, holder: Address) {
-  const token = await pub.readContract({ address: vesting, abi: vestingAbi, functionName: "token" });
+export function tokenBalance(token: Address, holder: Address) {
   return pub.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [holder] });
 }
