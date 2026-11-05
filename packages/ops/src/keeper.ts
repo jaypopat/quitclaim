@@ -26,6 +26,16 @@ export type SettleStep =
 
 export type Settled = { steps: SettleStep[]; lot: Lot; proven: boolean; reverted: boolean };
 
+export function provenMined(steps: SettleStep[]) {
+  for (const proof of steps.toReversed()) {
+    if (proof.kind !== "prove" || !proof.outcome.ok || !proof.outcome.value) continue;
+    const mined = steps.find((step): step is Extract<SettleStep, { kind: "mined" }> =>
+      step.kind === "mined" && step.seq === proof.seq && step.status === "success");
+    if (mined) return { proof, mined };
+  }
+  return undefined;
+}
+
 /**
  * What the keeper may broadcast. While Sealing only burns go out: the seller's own pending
  * transfers are theirs to broadcast, and the burn exists to make them unexecutable.

@@ -45,7 +45,6 @@ export class Run {
   }
 
   async write(error?: unknown) {
-    if (this.scenario === "handover" && !this.heist && !error) error = new Error("handover evidence is incomplete");
     const pass = !error && this.rows.length > 0 && this.rows.every((r) => r.pass);
     const [finality, hash] = await Promise.all([getFinality(this.contract), codeHash(this.contract)]);
     const lines = [

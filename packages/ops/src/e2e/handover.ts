@@ -6,7 +6,7 @@
  */
 import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
-import { settle } from "../keeper.ts";
+import { provenMined, settle } from "../keeper.ts";
 import { buy, list, position, provision, pullSource, requestTransfer, seal, withdraw } from "../lot.ts";
 import { view } from "../near.ts";
 import * as sablier from "../sablier.ts";
@@ -115,17 +115,18 @@ export async function handover(run: Run) {
     bs.ok && bobLot.state === "Clean" && bl.ok && resale.ok && third.owner === carol && third.address === p.address.toLowerCase() && minterGotAgain === royalty && resold.clean,
     [bs.url, bl.url, resale.url]);
 
-  const proof = s1.steps.findLast(step => step.kind === "prove" && step.outcome.ok && step.outcome.value);
-  const consumed = proof?.kind === "prove" ? s1.steps.find(step => step.kind === "mined" && step.seq === proof.seq && step.status === "success") : undefined;
-  const buyerProof = sb.steps.findLast(step => step.kind === "prove" && step.outcome.ok && step.outcome.value);
-  const paid = buyerProof?.kind === "prove" ? sb.steps.find(step => step.kind === "mined" && step.seq === buyerProof.seq && step.status === "success") : undefined;
-  if (retained && proof?.kind === "prove" && consumed?.kind === "mined" && paid?.kind === "mined" && sale.ok) {
+  const consumed = provenMined(s1.steps);
+  const paid = provenMined(sb.steps);
+  if (retained && consumed && paid && sale.ok) {
     run.heist = {
       chainId: config.evm.chainId, contract, lot: { id, address: p.address, token: p.token },
       seller: { near: alice, evm: aliceEvm }, buyer: { near: bob, evm: bobEvm },
-      retained: retainedBytes(retained), consumingTx: consumed.tx,
-      proof: { hash: proof.outcome.tx, signer: keeper }, sale: { hash: sale.tx, signer: bob },
-      buyerWithdrawal: paid.tx,
+      retained: retainedBytes(retained), consumingTx: consumed.mined.tx,
+      proof: { hash: consumed.proof.outcome.tx, signer: keeper }, sale: { hash: sale.tx, signer: bob },
+      buyerWithdrawal: paid.mined.tx,
     };
   }
+  run.record("heist evidence captured", "retained withdrawal, proven burn, sale and buyer withdrawal available",
+    run.heist ? "complete" : "missing evidence", !!run.heist);
+
 }

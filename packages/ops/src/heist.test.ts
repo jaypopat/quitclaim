@@ -30,16 +30,15 @@ async function fixture(overrides: { chainId?: number; target?: typeof token | ty
       success: true, canonical: true, block: 60n, timestamp: 40n, transfers: [{ from: account.address, to: buyer, amount: 20n }] },
     proof: { receiver: evidence.contract, signer: "bob.testnet", success: true, value: "true", height: 10, timestamp: 20n, logs: [],
       calls: [
-        { receiver: evidence.contract, predecessor: "bob.testnet", method: "prove", args: { id: 2, seq: 2 }, receiptId: "prove" },
-        { receiver: config.near.mpcSigner, predecessor: evidence.contract, method: "verify_foreign_transaction", receiptId: "mpc",
+        { receiver: evidence.contract, predecessor: "bob.testnet", method: "prove", args: { id: 2, seq: 2 }, ok: true, value: null },
+        { receiver: config.near.mpcSigner, predecessor: evidence.contract, method: "verify_foreign_transaction", ok: true, value: null,
           args: { request: { request: { Base: { tx_id: evidence.consumingTx.slice(2), finality: evidence.finality } }, domain_id: 3 } } },
-        { receiver: evidence.contract, predecessor: evidence.contract, method: "on_proved", args: { id: 2, nonce: 1 }, receiptId: "callback" },
-      ], outcomes: [{ id: "prove", success: true, value: null }, { id: "mpc", success: true, value: null }, { id: "callback", success: true, value: "true" }] },
+        { receiver: evidence.contract, predecessor: evidence.contract, method: "on_proved", args: { id: 2, nonce: 1 }, ok: true, value: "true" },
+      ] },
     sale: { receiver: evidence.contract, signer: "bob.testnet", success: true, value: "", height: 20, timestamp: 30n,
-      calls: [{ receiver: evidence.contract, predecessor: "bob.testnet", method: "buy", args: { id: 2 }, receiptId: "sale" }],
-      outcomes: [{ id: "sale", success: true, value: "" }],
+      calls: [{ receiver: evidence.contract, predecessor: "bob.testnet", method: "buy", args: { id: 2 }, ok: true, value: "" }],
       logs: [`EVENT_JSON:${JSON.stringify({ standard: "nep171", event: "nft_transfer", data: [{ old_owner_id: "alice.testnet", new_owner_id: "bob.testnet", token_ids: ["2"] }] })}`] },
-    previousNonce: { kind: "available", nonce: 1 },
+    tokenInfo: { symbol: "QTT", decimals: 0 },
   };
   let replays = 0;
   const lines: string[] = [];
@@ -52,7 +51,8 @@ test("verifies a historical handover after resale and replays exactly once", asy
   await verifyHeist(f.evidence, f.io);
   expect(f.replays()).toBe(1);
   expect(f.lines.some(line => line.includes("carol.testnet"))).toBe(true);
-  expect(f.lines.at(-1)).toContain("PASS replay rejected");
+  expect(f.lines.some(line => line.startsWith("PASS Alice's retained withdrawal was rejected."))).toBe(true);
+  expect(f.lines.some(line => line.includes("about 10 QTT"))).toBe(true);
 });
 
 test("rejects unsupported and malformed evidence", () => {
@@ -89,9 +89,8 @@ const mutations: [string, (o: Observation, e: HeistEvidence) => void][] = [
   ["noncanonical burn", o => { o.consumer.canonical = false; }],
   ["reverted burn", o => { o.consumer.success = false; }],
   ["different consuming nonce", o => { o.consumer.nonce = 0; }],
-  ["previously consumed historical nonce", o => { o.previousNonce = { kind: "available", nonce: 2 }; }],
   ["wrong MPC consuming hash", o => { o.proof.calls[1]!.args = { request: { request: { Base: { tx_id: "different", finality: "Latest" } }, domain_id: 3 } }; }],
-  ["failed proof callback", o => { o.proof.outcomes[2]!.value = "false"; }],
+  ["failed proof callback", o => { o.proof.calls[2]!.value = "false"; }],
   ["different sold lot", o => { o.sale.calls[0]!.args.id = 99; }],
   ["missing sale event", o => { o.sale.logs = []; }],
   ["reverted withdrawal", o => { o.withdrawal.success = false; }],
@@ -105,14 +104,6 @@ for (const [name, mutate] of mutations) test(`${name} blocks replay`, async () =
   expect(f.replays()).toBe(0);
 });
 
-test("unavailable historical nonce is disclosed without claiming it passed", async () => {
-  const f = await fixture();
-  f.observation.previousNonce = { kind: "unavailable", reason: "historical state pruned" };
-  await verifyHeist(f.evidence, f.io);
-  expect(f.lines.some(line => line.startsWith("UNAVAILABLE historical nonce"))).toBe(true);
-  expect(f.replays()).toBe(1);
-});
-
 test("unavailable mandatory history skips replay", async () => {
   const f = await fixture();
   f.io.observe = async () => { throw new Error("NEAR proof history incomplete"); };
@@ -124,7 +115,7 @@ test("transport errors, already-known responses, and accepted broadcasts cannot 
   for (const message of ["network timeout", "already known", "insufficient funds", "RPC accepted transaction 0x123"]) {
     const f = await fixture();
     f.io.replay = async () => replayError(new Error(message));
-    await expect(verifyHeist(f.evidence, f.io)).rejects.toThrow("Replay incomplete");
+    await expect(verifyHeist(f.evidence, f.io)).rejects.toThrow("Replay failed");
   }
   expect(replayError(new Error("nonce too low: next nonce 3, tx nonce 1")).kind).toBe("nonce-consumed");
 });

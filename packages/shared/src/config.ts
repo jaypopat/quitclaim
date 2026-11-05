@@ -1,7 +1,7 @@
 export const config = {
   near: {
     networkId: "testnet",
-    rpcUrl: "https://rpc.testnet.fastnear.com",
+    rpcUrl: "https://archival-rpc.testnet.fastnear.com",
     mpcSigner: "v1.signer-prod.testnet",
     signDomain: 0,
     foreignTxDomain: 3,

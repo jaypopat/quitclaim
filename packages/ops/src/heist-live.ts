@@ -12,7 +12,7 @@ try {
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     process.stdout.write(stdout);
     process.stderr.write(stderr);
-    if (code !== 0 || !stdout.includes("PASS replay rejected for consumed nonce:")) throw new Error("credential-free live heist did not pass");
+    if (code !== 0 || !stdout.includes("PASS Alice's retained withdrawal was rejected.")) throw new Error("credential-free live heist did not pass");
     console.log("PASS live command with an empty home, empty working directory, and no dotenv or credential environment.");
   } finally {
     clearTimeout(timer);
