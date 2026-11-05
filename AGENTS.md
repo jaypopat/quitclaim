@@ -20,9 +20,11 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
 - `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
+- `bun run heist [evidence.json]` verifies a published handover and replays its consumed retained transaction using public RPCs. It defaults to `reports/heist.json` and needs no keys, `.env`, or funds.
+- `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: gas top-up, broadcast, prove, rescue. Every action is permissionless.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
-- Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
+- Wallet-backed ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. The keyless heist uses public RPCs without it. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 
 ## Conventions
 

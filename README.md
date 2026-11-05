@@ -2,6 +2,8 @@
 
 Sell control of a payout address. The address and vesting schedule stay the same; its controller changes.
 
+**Try the retained-signature heist:** after `bun install`, run `bun run heist`. No wallet, keys, `.env`, or funds are needed. See the [judge guide](JUDGE.md) for the live checks, public evidence, and current development finality.
+
 A NEP-171 NFT is the title to an address on Base Sepolia. The contract requests Chain Signatures only for the NFT's owner. Before the title moves, MPC foreign-transaction verification proves the old owner's outstanding nonce was consumed. Either an issued transfer or a burn can consume it.
 
 This is a testnet prototype. Each lot's value is a real Sablier Lockup v4 stream on Base Sepolia, created non-cancelable and non-transferable with the lot address as recipient, funded in a test ERC-20. Signature enforcement depends on the MPC network and the contract's upgrade policy. Development deployments retain full-access keys: their holder can upgrade the contract or request signatures directly. The final demo deployment must disclose its key policy.
@@ -31,6 +33,8 @@ For a release, commit the source and run `bun run build:release`. This uses Dock
 ## Commands
 
 - `bun run dev` serves the frontend with HMR.
+- `bun run heist [evidence.json]` verifies the published handover and replays the consumed retained transaction using public RPCs. It defaults to `reports/heist.json`.
+- `bun run test:heist` runs that live command with an empty home, working directory and credential environment. It is separate from deterministic `verify`.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
 - `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with a minter royalty and pulled payouts, and a resale to a third owner at the same address. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.

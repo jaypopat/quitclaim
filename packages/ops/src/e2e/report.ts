@@ -1,7 +1,8 @@
 import { parseTransaction, recoverTransactionAddress, type Hex, type TransactionSerialized } from "viem";
 import * as base from "../base.ts";
 import type { SettleStep } from "../keeper.ts";
-import { codeHash, getFinality } from "../near.ts";
+import { codeHash, getFinality, provider } from "../near.ts";
+import { parseEvidence, type HeistRun } from "../heist-evidence.ts";
 
 type Row = { step: string; expect: string; got: string; links: string[]; pass: boolean };
 
@@ -11,6 +12,7 @@ export class Run {
   readonly notes: string[] = [];
   readonly lots: { id: number; address: string }[] = [];
   readonly started = new Date();
+  heist?: HeistRun;
 
   constructor(
     readonly scenario: string,
@@ -43,13 +45,15 @@ export class Run {
   }
 
   async write(error?: unknown) {
+    if (this.scenario === "handover" && !this.heist && !error) error = new Error("handover evidence is incomplete");
     const pass = !error && this.rows.length > 0 && this.rows.every((r) => r.pass);
+    const [finality, hash] = await Promise.all([getFinality(this.contract), codeHash(this.contract)]);
     const lines = [
       `# e2e ${this.scenario} ${this.started.toISOString()}`,
       "",
       `Result: **${pass ? "PASS" : "FAIL"}**, ${this.rows.filter((r) => r.pass).length}/${this.rows.length} steps.`,
       "",
-      `- contract: \`${this.contract}\`, finality **${await getFinality(this.contract)}**, code hash \`${await codeHash(this.contract)}\``,
+      `- contract: \`${this.contract}\`, finality **${finality}**, code hash \`${hash}\``,
       ...this.lots.map((l) => `- lot ${l.id} at \`${l.address}\``),
       "",
       "A proof shows the lot's outstanding nonce was consumed by one of its issued txs, not specifically the burn.",
@@ -68,6 +72,15 @@ export class Run {
     const stamp = this.started.toISOString().replaceAll(":", "-");
     const file = new URL(`../../../../reports/e2e-${this.scenario}-${stamp}.md`, import.meta.url);
     await Bun.write(file, lines.join("\n"));
+    if (pass && this.heist) {
+      const keys = await provider().viewAccessKeyList({ accountId: this.contract });
+      const evidence = parseEvidence({ ...this.heist, version: 1, recordedAt: this.started.toISOString(),
+        report: `e2e-${this.scenario}-${stamp}.md`, codeHash: hash, finality,
+        recordedFullAccessKeys: keys.keys.filter(key => key.access_key.permission === "FullAccess").length });
+      const artifact = new URL(`../../../../reports/heist-${stamp}.json`, import.meta.url);
+      await Bun.write(artifact, `${JSON.stringify(evidence, null, 2)}\n`);
+      console.log(`Heist evidence: ${artifact.pathname}`);
+    }
     console.log(`\n${pass ? "PASS" : "FAIL"} e2e ${this.scenario}  report: ${file.pathname}`);
     return pass;
   }

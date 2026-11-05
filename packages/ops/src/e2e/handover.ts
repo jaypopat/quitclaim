@@ -4,7 +4,7 @@
  * a minter royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
  * to Carol: three owners, one address.
  */
-import { isBurn } from "@quitclaim/shared";
+import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
 import { settle } from "../keeper.ts";
 import { buy, list, position, provision, pullSource, requestTransfer, seal, withdraw } from "../lot.ts";
@@ -12,6 +12,7 @@ import { view } from "../near.ts";
 import * as sablier from "../sablier.ts";
 import { alice, aliceEvm, bob, bobEvm, carol, contract, minter, keeper, lotOf, raw, transferTitle, withdrawTo } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
+import { retainedBytes } from "../heist-evidence.ts";
 
 const PRICE = 10n ** 23n;
 const ROYALTY_BPS = 250;
@@ -113,4 +114,18 @@ export async function handover(run: Run) {
     `sealed ${bobLot.state}; owner ${third.owner} v${third.version}; address ${third.address}; minter +${minterGotAgain}; title clean=${resold.clean}`,
     bs.ok && bobLot.state === "Clean" && bl.ok && resale.ok && third.owner === carol && third.address === p.address.toLowerCase() && minterGotAgain === royalty && resold.clean,
     [bs.url, bl.url, resale.url]);
+
+  const proof = s1.steps.findLast(step => step.kind === "prove" && step.outcome.ok && step.outcome.value);
+  const consumed = proof?.kind === "prove" ? s1.steps.find(step => step.kind === "mined" && step.seq === proof.seq && step.status === "success") : undefined;
+  const buyerProof = sb.steps.findLast(step => step.kind === "prove" && step.outcome.ok && step.outcome.value);
+  const paid = buyerProof?.kind === "prove" ? sb.steps.find(step => step.kind === "mined" && step.seq === buyerProof.seq && step.status === "success") : undefined;
+  if (retained && proof?.kind === "prove" && consumed?.kind === "mined" && paid?.kind === "mined" && sale.ok) {
+    run.heist = {
+      chainId: config.evm.chainId, contract, lot: { id, address: p.address, token: p.token },
+      seller: { near: alice, evm: aliceEvm }, buyer: { near: bob, evm: bobEvm },
+      retained: retainedBytes(retained), consumingTx: consumed.tx,
+      proof: { hash: proof.outcome.tx, signer: keeper }, sale: { hash: sale.tx, signer: bob },
+      buyerWithdrawal: paid.tx,
+    };
+  }
 }
