@@ -11,6 +11,10 @@ pub const CLAIM_FEE_CAP: u128 = 5_000_000_000;
 pub const CLAIM_PRIO_CAP: u128 = 1_000_000_000;
 pub const BURN_FEE_CAP: u128 = 2 * CLAIM_FEE_CAP;
 pub const BURN_PRIO_CAP: u128 = 2 * CLAIM_PRIO_CAP;
+/// With a nonzero floor, the 10% bump makes every replacement strictly pricier, so the number of
+/// txs at one nonce is bounded by the caps; the explicit limit bounds contract-paid storage.
+pub const MIN_FEE: u128 = 1_000_000;
+pub const MAX_ISSUED_PER_NONCE: usize = 16;
 
 const SECP256K1_HALF_N: [u8; 32] = [
     0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -72,10 +76,16 @@ pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Res
     if fees.max_fee.0 > fee_cap || fees.max_prio.0 > prio_cap {
         return Err("fee above cap");
     }
+    if fees.max_prio.0 < MIN_FEE || fees.max_fee.0 < MIN_FEE {
+        return Err("fees below the 1 Mwei floor");
+    }
     if fees.max_prio.0 > fees.max_fee.0 {
         return Err("priority fee above max fee");
     }
     let at_nonce = prior.iter().filter(|i| i.nonce == nonce);
+    if at_nonce.clone().count() >= MAX_ISSUED_PER_NONCE {
+        return Err("too many txs issued at this nonce");
+    }
     let prev_fee = at_nonce.clone().map(|i| i.fees.max_fee.0).max();
     let prev_prio = at_nonce.map(|i| i.fees.max_prio.0).max();
     if let (Some(pf), Some(pp)) = (prev_fee, prev_prio)

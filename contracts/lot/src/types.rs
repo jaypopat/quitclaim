@@ -59,7 +59,6 @@ pub struct Lot {
     pub issued: Vec<Issued>,
     pub next_seq: u32,
     pub sign_in_flight: bool,
-    pub prove_in_flight: bool,
 }
 
 #[near(serializers = [json, borsh])]

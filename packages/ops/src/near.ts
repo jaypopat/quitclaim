@@ -71,3 +71,19 @@ export async function getFinality(contractId: string) {
   const [, , finality] = await view(contractId, "get_config", {});
   return finality;
 }
+
+export async function codeHash(accountId: string): Promise<string> {
+  const res = await fetch(config.near.rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "view_account", finality: "final", account_id: accountId } }),
+  });
+  const body: unknown = await res.json();
+  if (res.ok && body !== null && typeof body === "object" && "result" in body) {
+    const result = body.result;
+    if (result !== null && typeof result === "object" && "code_hash" in result && typeof result.code_hash === "string") {
+      return result.code_hash;
+    }
+  }
+  throw new Error(`view_account failed for ${accountId}: ${JSON.stringify(body)}`);
+}
