@@ -38,7 +38,7 @@ sequenceDiagram
     MPC-->>Alice: signed tx at nonce 1, which she keeps
     Alice->>Lot: seal
     Lot->>MPC: sign a burn at nonce 1
-    Note over Base: anyone broadcasts the burn; it mines and consumes nonce 1
+    Note over Base: anyone broadcasts the burn, which mines and consumes nonce 1
     Lot->>MPC: verify_foreign_transaction(burn)
     MPC-->>Lot: attested, lot is Clean
     Bob->>Lot: buy (title moves, payment credited)
