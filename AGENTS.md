@@ -5,7 +5,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Layout
 
 - `contracts/lot` is the NEAR contract (Rust, `cargo near`, in the root Cargo workspace).
-- `contracts/vesting` is the mock vesting contract (Foundry, forge-std submodule).
+- `contracts/evm` holds the test ERC-20 that lots hold and streams are funded in (Foundry, forge-std submodule). Lots' value comes from real Sablier Lockup v4 streams on Base Sepolia (`packages/ops/src/sablier.ts`).
 - `packages/shared` holds chain config and lot-address derivation.
 - `packages/ops` holds Bun scripts.
 - `apps/web` is the frontend.
@@ -13,11 +13,12 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 ## Commands
 
-- `bun run verify` runs everything: typecheck, TS tests, lot test and build, vesting build and test. Run it before committing.
+- `bun run verify` runs everything: typecheck, TS tests, lot test and build, EVM build and test. Run it before committing.
 - `bun run dev` serves the web app.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <prefix> [Latest|Safe]` creates `<prefix>.<ADMIN_ACCOUNT>` and deploys the lot contract.
-- `bun run gate1` runs the adversarial handover (including a sale with royalty) on two fresh lots and writes `reports/gate1-*.md`.
+- `bun run e2e [handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
+- `bun run keeper [--watch]` settles lots: gas top-up, broadcast, prove, rescue. Every action is permissionless.
 - Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root.
 
 ## Conventions
@@ -31,7 +32,8 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - Record a tx as issued **before** calling `sign`. MPC signatures are public in the signer's receipts.
 - At most one outstanding nonce per lot. Any new tx at that nonce raises **both** EIP-1559 fees by ≥10%, under hard caps.
 - `prove` only uses tx hashes from contract state. Any signature accepted from outside must `ecrecover` to the lot address, or an attacker can sign the same payload with their own key and fake Clean.
-- Transfer and sale only from `Clean`, and every title move goes through `move_title`. Listings are bound to the lot version. Contract-built txs only (`claim(to)` and burn); never raw-hash signing.
+- Transfer and sale only from `Clean`, and every title move goes through `move_title`. Listings are bound to the lot version. Contract-built txs only: ERC-20 `transfer(to, amount)` on the token fixed at mint, and the burn. Never raw-hash signing.
+- The lot never signs calls to Sablier (or any source). Anyone pulls the stream into the lot; a lot-signed withdrawal could be griefed into reverting (`WithdrawAmountZero`). Outsiders can only add to the lot's balance.
 - `buy` credits proceeds in state with no cross-contract calls. Payouts are pulled; `withdraw_proceeds` zeroes before transferring and restores once on failure.
 - Use the MPC `recovery_id` as yParity as-is. Strip leading zeros from r/s before RLP.
 - The lot address depends on the lot contract account plus the path. Changing either orphans every lot.
@@ -40,7 +42,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 - `sign` and `verify_foreign_transaction` each need 1 yoctoNEAR and at least 15 Tgas. Ethereum isn't whitelisted for verification; Base is. Every failed verification is a silent ~115 s timeout.
 - Base charges an L1 fee on top of L2 gas. Estimate gas per tx; never hardcode it.
-- Local DNS blocks some RPC hosts. Use publicnode for Base Sepolia and thirdweb for Sepolia.
+- RPC access fails over: `config.near.rpcUrls` and `config.evm.rpcUrls` (override with `NEAR_RPCS` / `BASE_RPCS`). Local DNS blocks some hosts; the defaults are ones that resolve here.
 - The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
 - A call that returns a `Promise` must be added to `resolvesVia` in `packages/shared/scripts/gen-abi.ts`, or `bun run abi` fails.
 - `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.

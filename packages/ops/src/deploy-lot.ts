@@ -6,7 +6,7 @@
  */
 import { Account, KeyPair, actions, nearToYocto, teraToGas } from "near-api-js";
 import { config } from "@quitclaim/shared";
-import { account } from "./near.ts";
+import { account, provider } from "./near.ts";
 import { env } from "./env.ts";
 
 const [prefix, finality = "Safe"] = Bun.argv.slice(2);
@@ -22,7 +22,7 @@ const key = KeyPair.fromRandom("ed25519");
 await (await account(admin)).createSubAccount({ accountOrPrefix: contractId, publicKey: key.getPublicKey().toString(), nearToTransfer: nearToYocto("3") });
 await Bun.write(`${env.credentialsDir}/${contractId}.json`, JSON.stringify({ account_id: contractId, public_key: key.getPublicKey().toString(), private_key: key.toString() }));
 
-const contract = new Account(contractId, config.near.rpcUrl, key.toString() as never);
+const contract = new Account(contractId, provider(), key.toString() as never);
 const res = await contract.signAndSendTransaction({
   receiverId: contractId,
   actions: [

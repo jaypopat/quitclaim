@@ -1,5 +1,5 @@
-import { Account, actions, teraToGas } from "near-api-js";
-import { config, type LotCalls, type LotViews } from "@quitclaim/shared";
+import { Account, FailoverRpcProvider, JsonRpcProvider, actions, teraToGas } from "near-api-js";
+import { config, nearRpc, nearView, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
 type Sent = { tx: string; url: string };
@@ -13,8 +13,11 @@ async function keyFor(accountId: string): Promise<string> {
   return (await file.json()).private_key;
 }
 
+/** Signed txs fail over too. Resending the same signed tx is safe: NEAR dedupes by tx hash. */
+export const provider = () => new FailoverRpcProvider(config.near.rpcUrls.map((url) => new JsonRpcProvider({ url })));
+
 export async function account(accountId: string): Promise<Account> {
-  return new Account(accountId, config.near.rpcUrl, (await keyFor(accountId)) as never);
+  return new Account(accountId, provider(), (await keyFor(accountId)) as never);
 }
 
 
@@ -45,26 +48,8 @@ export async function call<M extends keyof LotCalls>(
   return { ...sent, ok: true, value: (text ? JSON.parse(text) : null) as LotCalls[M]["result"] };
 }
 
-export async function view<M extends keyof LotViews>(contractId: string, method: M, args: LotViews[M]["args"]): Promise<LotViews[M]["result"]> {
-  const res = await fetch(config.near.rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "query",
-      params: {
-        request_type: "call_function",
-        finality: "optimistic",
-        account_id: contractId,
-        method_name: method,
-        args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
-      },
-    }),
-  });
-  const body = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: unknown };
-  if (!body.result?.result) throw new Error(`${method} failed: ${JSON.stringify(body.result?.error ?? body.error)}`);
-  return JSON.parse(Buffer.from(body.result.result).toString());
+export function view<M extends keyof LotViews>(contractId: string, method: M, args: LotViews[M]["args"]): Promise<LotViews[M]["result"]> {
+  return nearView(contractId, method, args);
 }
 
 export const getLot = (contractId: string, id: number) => view(contractId, "get_lot", { id });
@@ -75,17 +60,11 @@ export async function getFinality(contractId: string) {
 }
 
 export async function codeHash(accountId: string): Promise<string> {
-  const res = await fetch(config.near.rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "view_account", finality: "final", account_id: accountId } }),
+  const body = await nearRpc<{ result?: { code_hash?: string }; error?: unknown }>("query", {
+    request_type: "view_account",
+    finality: "final",
+    account_id: accountId,
   });
-  const body: unknown = await res.json();
-  if (res.ok && body !== null && typeof body === "object" && "result" in body) {
-    const result = body.result;
-    if (result !== null && typeof result === "object" && "code_hash" in result && typeof result.code_hash === "string") {
-      return result.code_hash;
-    }
-  }
-  throw new Error(`view_account failed for ${accountId}: ${JSON.stringify(body)}`);
+  if (typeof body.result?.code_hash !== "string") throw new Error(`view_account failed for ${accountId}: ${JSON.stringify(body.error ?? body)}`);
+  return body.result.code_hash;
 }

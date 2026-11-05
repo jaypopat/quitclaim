@@ -12,13 +12,14 @@
     "test": "bun test packages apps",
     "build:lot": "cd contracts/lot && cargo near build non-reproducible-wasm",
     "test:lot": "cargo test -p quitclaim-lot",
-    "build:vesting": "cd contracts/vesting && forge build",
-    "test:vesting": "cd contracts/vesting && forge test",
-    "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run build:lot && bun run build:vesting && bun run test:vesting",
-    "gate1": "bun packages/ops/src/gate1.ts",
+    "build:evm": "cd contracts/evm && forge build",
+    "test:evm": "cd contracts/evm && forge test",
+    "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run build:lot && bun run build:evm && bun run test:evm",
     "deploy-lot": "bun packages/ops/src/deploy-lot.ts",
     "lot-address": "bun packages/ops/src/lot-address.ts",
-    "abi": "bun packages/shared/scripts/gen-abi.ts"
+    "abi": "bun packages/shared/scripts/gen-abi.ts",
+    "e2e": "bun packages/ops/src/e2e/index.ts",
+    "keeper": "bun packages/ops/src/keeper.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
