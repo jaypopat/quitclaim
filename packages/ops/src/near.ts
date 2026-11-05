@@ -2,7 +2,8 @@ import { Account, actions, teraToGas } from "near-api-js";
 import { config, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
-export type CallOutcome<T> = { tx: string; url: string; ok: true; value: T } | { tx: string; url: string; ok: false; error: string };
+type Sent = { tx: string; url: string };
+export type CallOutcome<T> = (Sent & { ok: true; value: T }) | (Sent & { ok: false; error: string });
 
 const explorer = (tx: string) => `https://testnet.nearblocks.io/txns/${tx}`;
 
@@ -15,6 +16,7 @@ async function keyFor(accountId: string): Promise<string> {
 export async function account(accountId: string): Promise<Account> {
   return new Account(accountId, config.near.rpcUrl, (await keyFor(accountId)) as never);
 }
+
 
 function failureMessage(status: unknown): string {
   const s = JSON.stringify(status);
@@ -36,11 +38,11 @@ export async function call<M extends keyof LotCalls>(
     waitUntil: "FINAL",
     throwOnFailure: false,
   })) as { transaction: { hash: string }; status: Record<string, unknown> };
-  const tx = res.transaction.hash;
-  if ("Failure" in res.status) return { tx, url: explorer(tx), ok: false, error: failureMessage(res.status) };
+  const sent = { tx: res.transaction.hash, url: explorer(res.transaction.hash) };
+  if ("Failure" in res.status) return { ...sent, ok: false, error: failureMessage(res.status) };
   const raw = res.status.SuccessValue as string | undefined;
   const text = raw ? Buffer.from(raw, "base64").toString() : "";
-  return { tx, url: explorer(tx), ok: true, value: (text ? JSON.parse(text) : null) as LotCalls[M]["result"] };
+  return { ...sent, ok: true, value: (text ? JSON.parse(text) : null) as LotCalls[M]["result"] };
 }
 
 export async function view<M extends keyof LotViews>(contractId: string, method: M, args: LotViews[M]["args"]): Promise<LotViews[M]["result"]> {

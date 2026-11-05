@@ -31,6 +31,7 @@ const resolvesVia: Record<string, string> = {
   rebump: "on_signed",
   rescue: "on_signed",
   prove: "on_proved",
+  withdraw_proceeds: "on_withdraw",
 };
 
 const pascal = (s: string) => s.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
@@ -54,6 +55,9 @@ for (const f of functions) {
   const target = via ? functions.find((g) => g.name === via) : f;
   if (!target) throw new Error(`${f.name} resolves via missing ${via}`);
   const result = resultOf(target);
+  if (JSON.stringify(result).includes('"#/definitions/Promise"')) {
+    throw new Error(`${f.name} returns a Promise: add it to resolvesVia with the callback it resolves to`);
+  }
   definitions[`${pascal(f.name)}Result`] =
     f.name === "seal" ? { anyOf: [result, { $ref: "#/definitions/LotState" }] } : result;
   methods.push({ name: f.name, kind: f.kind, payable: !!f.modifiers?.includes("payable") });

@@ -1,6 +1,7 @@
 mod evm;
 mod mpc;
 mod nft;
+mod sale;
 mod types;
 
 #[cfg(test)]
@@ -8,12 +9,12 @@ mod tests;
 
 use near_contract_standards::non_fungible_token::events::{NftMint, NftTransfer};
 use near_sdk::serde_json::Value;
-use near_sdk::store::{IterableMap, LookupSet};
+use near_sdk::store::{IterableMap, LookupMap, LookupSet};
 use near_sdk::{
     env, log, near, require, AccountId, Gas, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
 };
 
-pub use types::{Fees, Finality, Issued, Kind, Lot, LotId, LotState, MintedLot};
+pub use types::{Fees, Finality, Issued, Kind, Listing, Lot, LotId, LotState, MintedLot, Payout};
 
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 
@@ -26,6 +27,8 @@ pub struct Contract {
     lots: IterableMap<LotId, Lot>,
     paths: LookupSet<String>,
     next_id: LotId,
+    /// Sale proceeds owed to each account, pulled with `withdraw_proceeds`.
+    proceeds: LookupMap<AccountId, u128>,
 }
 
 fn require_deposit() {
@@ -90,12 +93,14 @@ impl Contract {
             lots: IterableMap::new(b"l"),
             paths: LookupSet::new(b"p"),
             next_id: 0,
+            proceeds: LookupMap::new(b"r"),
         }
     }
 
     /// Admin-only (issuer provisioning). Paths are unique: two lots on one path would share an address.
-    pub fn mint(&mut self, path: String, vesting: String, owner_id: AccountId, issuer: AccountId) -> Promise {
+    pub fn mint(&mut self, path: String, vesting: String, owner_id: AccountId, issuer: AccountId, royalty_bps: u16) -> Promise {
         require!(env::predecessor_account_id() == self.admin, "only the admin can mint");
+        require!(royalty_bps <= sale::MAX_ROYALTY_BPS, "royalty above the 10% cap");
         require!(evm::parse_address(&vesting).is_some(), "vesting must be a 0x address");
         require!(self.paths.insert(path.clone()), "path already used");
         let id = self.next_id;
@@ -114,6 +119,8 @@ impl Contract {
                 issued: vec![],
                 next_seq: 0,
                 sign_in_flight: false,
+                royalty_bps,
+                listing: None,
             },
         );
         Promise::new(self.signer.clone())
@@ -215,6 +222,7 @@ impl Contract {
         );
         lot.state = LotState::Active;
         lot.version += 1;
+        lot.listing = None;
         self.lots.insert(id, lot);
     }
 
@@ -311,23 +319,28 @@ impl Contract {
 }
 
 impl Contract {
-    /// The only path by which a title moves.
-    fn internal_transfer(&mut self, id: LotId, receiver_id: AccountId, memo: Option<String>) {
-        let mut lot = self.lot(id);
-        Self::require_owner(&lot);
+    /// Every title move goes through here: `nft_transfer` by the owner, or `buy`.
+    fn move_title(&mut self, id: LotId, mut lot: Lot, receiver_id: AccountId, memo: Option<&str>) {
         require!(lot.state == LotState::Clean, "lot is not Clean");
         require!(receiver_id != lot.owner, "receiver is already the owner");
         let old = std::mem::replace(&mut lot.owner, receiver_id);
         lot.state = LotState::Active;
         lot.version += 1;
+        lot.listing = None;
         NftTransfer {
             old_owner_id: &old,
             new_owner_id: &lot.owner,
             token_ids: &[&id.to_string()],
             authorized_id: None,
-            memo: memo.as_deref(),
+            memo,
         }
         .emit();
         self.lots.insert(id, lot);
+    }
+
+    fn internal_transfer(&mut self, id: LotId, receiver_id: AccountId, memo: Option<String>) {
+        let lot = self.lot(id);
+        Self::require_owner(&lot);
+        self.move_title(id, lot, receiver_id, memo.as_deref());
     }
 }

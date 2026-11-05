@@ -4,20 +4,24 @@
  *
  *   bun run gate1
  *
- * Lot A is the handover: claim, a retained claim, seal, proof, the heist, transfer, new owner claims.
+ * Lot A is the handover: claim, a retained claim, seal, proof, the heist, a sale with an issuer royalty,
+ * pulled payouts, new owner claims.
  * Lot B covers the paths lot A can't: the seller broadcasts first and the burn replaces it, and a
  * claim that mines but reverts, recovered by a rescue burn at the next nonce.
  */
 import { parseTransaction, recoverTransactionAddress, type Address, type Hex } from "viem";
 import { isBurn, type Lot } from "@quitclaim/shared";
 import * as base from "./base.ts";
-import { call, codeHash, getFinality, getLot } from "./near.ts";
+import { call, codeHash, getFinality, getLot, view } from "./near.ts";
 import { env } from "./env.ts";
-import { provision, rebump, relay, requestClaim, rescue, seal, type RelayStep } from "./lot.ts";
+import { buy, list, provision, rebump, relay, requestClaim, rescue, seal, withdraw, type RelayStep } from "./lot.ts";
 
 const contract = env.lotContract();
 const alice = process.env.ALICE_ACCOUNT ?? env.admin();
 const bob = process.env.BOB_ACCOUNT ?? `bob.${env.admin()}`;
+const issuer = process.env.ISSUER_ACCOUNT ?? env.admin();
+const PRICE = 10n ** 23n;
+const ROYALTY_BPS = 250;
 const aliceEvm: Address = "0x000000000000000000000000000000000000a11c";
 const bobEvm: Address = "0x0000000000000000000000000000000000000b0b";
 
@@ -71,7 +75,7 @@ async function describeRetained(raw: Hex) {
 }
 
 async function lotA() {
-  const p = await provision({ contract, path: `gate1-a-${started.getTime()}`, owner: alice, issuer: alice });
+  const p = await provision({ contract, path: `gate1-a-${started.getTime()}`, owner: alice, issuer, royaltyBps: ROYALTY_BPS });
   record("A: provision", "contract learns the derived address from MPC", `lot ${p.id} at ${p.address}`, true, [
     p.mint.url,
     `vesting ${base.txUrl(p.vestingTx)}`,
@@ -86,19 +90,14 @@ async function lotA() {
   record("A: prove claim 0", "nonce 0 proven consumed, lot stays Active", `${r0.lot.state}, next_nonce ${r0.lot.next_nonce}, alice holds ${aliceTokens}`,
     r0.lot.state === "Active" && r0.lot.next_nonce === 1 && aliceTokens > 0n, relayLinks(r0.steps));
 
-  const pendingSign = requestClaim(contract, alice, id, aliceEvm);
-  await Bun.sleep(4_000);
-  const signingBefore = (await lotOf(id)).sign_in_flight;
-  const t1 = await transfer(alice, id);
-  const signingAfter = (await lotOf(id)).sign_in_flight;
-  record("A: transfer while a sign is in flight", "refused while MPC is still signing",
-    `sign_in_flight before=${signingBefore} after=${signingAfter}; transfer: ${t1.ok ? "accepted!" : t1.error}`,
-    signingBefore && signingAfter && !t1.ok && t1.error.includes("not Clean"), [t1.url]);
-
-  const c1 = await pendingSign;
+  const c1 = await requestClaim(contract, alice, id, aliceEvm);
   const retained = c1.ok ? (c1.value as Hex | null) : null;
   record("A: alice retains claim 1", "a valid signed claim(to=alice) at nonce 1, never broadcast", retained ? "signed and kept" : c1.ok ? "no raw" : c1.error, !!retained, [c1.url]);
   if (retained) await describeRetained(retained);
+
+  const t1 = await transfer(alice, id);
+  record("A: transfer with an outstanding signed request", "refused: an unproven nonce means the lot is not Clean",
+    t1.ok ? "accepted!" : t1.error, !t1.ok && t1.error.includes("not Clean"), [t1.url]);
 
   const s = await seal(contract, alice, id);
   const sealed = await lotOf(id);
@@ -108,6 +107,9 @@ async function lotA() {
   const refused = await requestClaim(contract, alice, id, aliceEvm);
   record("A: alice requests while Sealing", "refused: lot is not Active", refused.ok ? "signed!" : refused.error, !refused.ok && refused.error.includes("not Active"), [refused.url]);
 
+  const early = await list(contract, alice, id, PRICE);
+  record("A: alice lists while Sealing", "refused: agreements only while Clean", early.ok ? "listed!" : early.error, !early.ok && early.error.includes("not Clean"), [early.url]);
+
   const r1 = await relay(contract, bob, id, isBurn);
   record("A: prove burn", "old nonce proven consumed: Clean", `${r1.lot.state} v${r1.lot.version}, next_nonce ${r1.lot.next_nonce}`, r1.lot.state === "Clean" && r1.lot.next_nonce === 2, relayLinks(r1.steps));
 
@@ -115,9 +117,27 @@ async function lotA() {
   record("A: alice broadcasts the retained claim", "Base rejects it: its nonce was consumed", heist ? ("message" in heist ? heist.message.split("\n")[0]! : `accepted ${heist.hash}`) : "no retained tx",
     heist?.status === "nonce-too-low");
 
-  const t = await transfer(alice, id);
+  const sellerBefore = BigInt(await view(contract, "proceeds_of", { account_id: alice }));
+  const issuerBefore = BigInt(await view(contract, "proceeds_of", { account_id: issuer }));
+  const l = await list(contract, alice, id, PRICE);
+  const listed = await lotOf(id);
+  record("A: alice lists the Clean lot", "listing bound to the current version", `price ${listed.listing?.price}, version ${listed.listing?.version}`,
+    l.ok && listed.listing?.version === listed.version, [l.url]);
+
+  const sale = await buy(contract, bob, id);
   const moved = await lotOf(id);
-  record("A: transfer to bob", "title moves only from Clean; lot Active for bob", `${moved.owner} ${moved.state} v${moved.version}`, t.ok && moved.owner === bob && moved.state === "Active", [t.url]);
+  const royalty = (PRICE * BigInt(ROYALTY_BPS)) / 10_000n;
+  const sellerGot = BigInt(await view(contract, "proceeds_of", { account_id: alice })) - sellerBefore;
+  const issuerGot = BigInt(await view(contract, "proceeds_of", { account_id: issuer })) - issuerBefore;
+  record("A: bob buys", "one call moves the title and credits seller and issuer (2.5% royalty)",
+    `${moved.owner} ${moved.state} v${moved.version}; seller +${sellerGot}, issuer +${issuerGot}`,
+    sale.ok && moved.owner === bob && moved.state === "Active" && sellerGot === PRICE - royalty && issuerGot === royalty, [sale.url]);
+
+  const ws = await withdraw(contract, alice);
+  const wi = await withdraw(contract, issuer);
+  record("A: seller and issuer withdraw", "pulled payouts transfer and zero the balances",
+    `seller ${ws.ok ? ws.value : ws.error}, issuer ${wi.ok ? wi.value : wi.error}`,
+    ws.ok && ws.value === true && wi.ok && wi.value === true && (await view(contract, "proceeds_of", { account_id: alice })) === "0", [ws.url, wi.url]);
 
   const locked = await requestClaim(contract, alice, id, aliceEvm);
   record("A: alice requests after transfer", "refused: not the lot owner", locked.ok ? "signed!" : locked.error, !locked.ok && locked.error.includes("not the lot owner"), [locked.url]);
@@ -173,6 +193,13 @@ async function lotB() {
   record("B: rescue burn at the next nonce", "proving it proves the stuck nonce too: Clean",
     `${rr.lot.state} v${rr.lot.version}, next_nonce ${rr.lot.next_nonce}`, rr.lot.state === "Clean" && rr.lot.next_nonce === rv.lot.next_nonce + 2,
     [s2.url, rs.url, ...relayLinks(rr.steps)]);
+
+  const issuerBefore = await view(contract, "proceeds_of", { account_id: alice });
+  const t = await transfer(alice, id);
+  const moved = await lotOf(id);
+  const issuerAfter = await view(contract, "proceeds_of", { account_id: alice });
+  record("B: direct transfer", "nft_transfer from Clean moves the title and pays no royalty",
+    `${moved.owner} ${moved.state}; issuer proceeds ${issuerBefore} -> ${issuerAfter}`, t.ok && moved.owner === bob && issuerBefore === issuerAfter, [t.url]);
   return p;
 }
 
