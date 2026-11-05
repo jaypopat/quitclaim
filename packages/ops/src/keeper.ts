@@ -12,6 +12,7 @@ import * as base from "./base.ts";
 import { env } from "./env.ts";
 import { mustLot, rebump, rescue } from "./lot.ts";
 import { call, getFinality, view, type CallOutcome } from "./near.ts";
+import { pendingLots } from "./pending.ts";
 
 const YOCTO = 1n;
 
@@ -119,10 +120,11 @@ export async function settle(contract: string, prover: string, id: number): Prom
 }
 
 /** Lots with a signed tx the contract hasn't seen proven yet. */
-async function pending(contract: string) {
-  const tokens = await view(contract, "nft_tokens", { from_index: null, limit: null });
-  const lots = await Promise.all(tokens.map(async (t) => ({ id: Number(t.token_id), lot: await mustLot(contract, Number(t.token_id)) })));
-  return lots.filter(({ lot }) => lot.issued.some((i) => i.tx_hash));
+function pending(contract: string) {
+  return pendingLots(
+    (from_index, limit) => view(contract, "nft_tokens", { from_index, limit }),
+    async (id) => (await mustLot(contract, id)).issued.some((i) => i.tx_hash),
+  );
 }
 
 if (import.meta.main) {
@@ -130,7 +132,7 @@ if (import.meta.main) {
   const prover = process.env.KEEPER_ACCOUNT ?? env.deployer();
   const watch = Bun.argv.includes("--watch");
   do {
-    for (const { id } of await pending(contract)) {
+    for await (const id of pending(contract)) {
       try {
         const r = await settle(contract, prover, id);
         console.log(`lot ${id}: ${r.lot.state} next_nonce ${r.lot.next_nonce} proven=${r.proven} reverted=${r.reverted}`);

@@ -20,7 +20,11 @@ bun install
 bun run verify
 ```
 
-`bun run verify` type checks, runs the TS tests, tests and builds the lot contract, and builds and tests the EVM contracts. Needs Bun, Rust 1.96 with `wasm32-unknown-unknown`, `cargo-near` and Foundry.
+`bun run verify` type checks, runs the TS and Rust unit tests, builds the lot contract, runs local NEAR Sandbox tests, and builds and tests the EVM contracts. Needs Bun, Rust 1.96 with `wasm32-unknown-unknown`, `cargo-near` and Foundry. The first Sandbox run downloads the node binary; it needs loopback networking and no testnet funds.
+
+`bun run test:sandbox` runs the deployed-WASM receipt tests alone. A local MPC fixture injects verification and signing failures. The suite checks mint rollback and storage refunds, private callback enforcement, sales, and payout restoration after a real failed transfer receipt. Real MPC attestations and Base execution remain covered by `bun run e2e`.
+
+For a release, commit the source and run `bun run build:release`. This uses Docker and the digest-pinned SourceScan image with Rust 1.96 and cargo-near 0.21.1. Keep the resulting artifact for deployment and compare its hash with the deployed code. Development builds from `build:lot` are not evidence of source reproducibility.
 
 ## Commands
 
@@ -28,7 +32,7 @@ bun run verify
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
 - `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts, and a resale to a third owner at the same address. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
-- `bun run keeper [--watch]` settles every lot with unproven transactions: it tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
+- `bun run keeper [--watch]` discovers lots in pages of 100 and settles unproven transactions: it tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 
 Ops scripts need a root `.env`; see `.env.example`.
