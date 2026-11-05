@@ -9,12 +9,14 @@ export type Kind =
         to: string;
       };
     };
+export type Item = "Title" | "Lease";
 export type LotState = "Minting" | "Active" | "Sealing" | "Clean";
 export type PromiseOrValueBoolean = boolean;
 export type PromiseOrValueLotState = "Minting" | "Active" | "Sealing" | "Clean";
 export type PromiseOrValueNullable_MintedLot = MintedLot | null;
 export type BuyResult = null;
 export type DelistResult = null;
+export type EndLeaseResult = null;
 export type GetLotResult = Lot | null;
 export type ListResult = null;
 export type MintProvenResult = MintedLot | null;
@@ -24,11 +26,14 @@ export type NftTokensResult = Token[];
 export type NftTokensForOwnerResult = Token[];
 export type NftTotalSupplyResult = string;
 export type NftTransferResult = null;
+export type OfferLeaseResult = null;
 export type ProceedsOfResult = string;
 export type ProveResult = boolean;
 export type RebumpResult = string | null;
 export type RegisterSignatureResult = string;
 export type SealResult = RebumpResult | LotState;
+export type SurrenderLeaseResult = null;
+export type TakeLeaseResult = null;
 export type UnsealResult = null;
 export type WithdrawProceedsResult = boolean;
 
@@ -64,7 +69,32 @@ export interface Issued {
   seq: number;
   tx_hash?: string | null;
 }
+export interface Lease {
+  /**
+   * Worst case the lease holders have moved out: per nonce, the largest transfer issued there.
+   */
+  committed: string;
+  ends_at_ms: number;
+  holder: string;
+  start_ms: number;
+}
+export interface LeaseBudget {
+  /**
+   * What the stream has vested since the lease started, up to its end.
+   */
+  allowed: string;
+  committed: string;
+}
+export interface LeaseOffer {
+  ends_at_ms: number;
+  /**
+   * Price in yoctoNEAR.
+   */
+  price: string;
+  version: number;
+}
 export interface Listing {
+  item: Item;
   /**
    * Price in yoctoNEAR.
    */
@@ -74,6 +104,14 @@ export interface Listing {
 export interface Lot {
   address?: string | null;
   issued: Issued[];
+  /**
+   * While set, the lease holder controls the lot and the title can't move. Ends only at Clean.
+   */
+  lease?: Lease | null;
+  /**
+   * The title owner's standing offer to lease the lot. Only while Clean with no lease, bound to the version.
+   */
+  lease_offer?: LeaseOffer | null;
   /**
    * Only exists while Clean. Bound to the version it was listed at.
    */
@@ -112,6 +150,16 @@ export interface Source {
    * e.g. "sablier-lockup-v4".
    */
   kind: string;
+  schedule: Schedule;
+}
+export interface Schedule {
+  cliff: number;
+  cliff_unlock: string;
+  deposit: string;
+  end: number;
+  granularity: number;
+  start: number;
+  start_unlock: string;
 }
 export interface MintedLot {
   address: string;
@@ -160,8 +208,14 @@ export interface BuyArgs {
 export interface DelistArgs {
   id: number;
 }
+export interface EndLeaseArgs {
+  id: number;
+}
 export interface GetConfigArgs {}
 export interface GetLotArgs {
+  id: number;
+}
+export interface LeaseBudgetArgs {
   id: number;
 }
 export interface ListArgs {
@@ -209,6 +263,11 @@ export interface NftTransferCallArgs {
   memo?: string | null;
   msg: string;
 }
+export interface OfferLeaseArgs {
+  id: number;
+  price: string;
+  ends_at_ms: number;
+}
 export interface ProceedsOfArgs {
   account_id: string;
 }
@@ -243,12 +302,20 @@ export interface SealArgs {
   id: number;
   fees: Fees;
 }
+export interface SurrenderLeaseArgs {
+  id: number;
+}
+export interface TakeLeaseArgs {
+  id: number;
+  version: number;
+}
 export interface UnsealArgs {
   id: number;
 }
 export interface WithdrawProceedsArgs {}
 
 export type GetConfigResult = Config;
+export type LeaseBudgetResult = LeaseBudget;
 export type NftMetadataResult = NFTContractMetadata;
 export type NftPayoutResult = Payout;
 export type NftTransferCallResult = PromiseOrValueBoolean;
@@ -258,6 +325,7 @@ export type RescueResult = RebumpResult;
 export interface LotViews {
   get_config: { args: GetConfigArgs; result: GetConfigResult; payable: false };
   get_lot: { args: GetLotArgs; result: GetLotResult; payable: false };
+  lease_budget: { args: LeaseBudgetArgs; result: LeaseBudgetResult; payable: false };
   nft_metadata: { args: NftMetadataArgs; result: NftMetadataResult; payable: false };
   nft_payout: { args: NftPayoutArgs; result: NftPayoutResult; payable: false };
   nft_supply_for_owner: { args: NftSupplyForOwnerArgs; result: NftSupplyForOwnerResult; payable: false };
@@ -271,16 +339,20 @@ export interface LotViews {
 export interface LotCalls {
   buy: { args: BuyArgs; result: BuyResult; payable: true };
   delist: { args: DelistArgs; result: DelistResult; payable: false };
+  end_lease: { args: EndLeaseArgs; result: EndLeaseResult; payable: false };
   list: { args: ListArgs; result: ListResult; payable: false };
   mint_proven: { args: MintProvenArgs; result: MintProvenResult; payable: true };
   nft_transfer: { args: NftTransferArgs; result: NftTransferResult; payable: true };
   nft_transfer_call: { args: NftTransferCallArgs; result: NftTransferCallResult; payable: true };
+  offer_lease: { args: OfferLeaseArgs; result: OfferLeaseResult; payable: false };
   prove: { args: ProveArgs; result: ProveResult; payable: true };
   rebump: { args: RebumpArgs; result: RebumpResult; payable: true };
   register_signature: { args: RegisterSignatureArgs; result: RegisterSignatureResult; payable: false };
   request_transfer: { args: RequestTransferArgs; result: RequestTransferResult; payable: true };
   rescue: { args: RescueArgs; result: RescueResult; payable: true };
   seal: { args: SealArgs; result: SealResult; payable: true };
+  surrender_lease: { args: SurrenderLeaseArgs; result: SurrenderLeaseResult; payable: false };
+  take_lease: { args: TakeLeaseArgs; result: TakeLeaseResult; payable: true };
   unseal: { args: UnsealArgs; result: UnsealResult; payable: false };
   withdraw_proceeds: { args: WithdrawProceedsArgs; result: WithdrawProceedsResult; payable: false };
 }

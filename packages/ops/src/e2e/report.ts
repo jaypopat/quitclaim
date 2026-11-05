@@ -87,6 +87,8 @@ export class Run {
 
 export function settleLinks(steps: SettleStep[]) {
   return steps.flatMap((s) => {
+    if (s.kind === "seal") return [`seal ${s.outcome.url}`];
+    if (s.kind === "end_lease") return [`end lease ${s.outcome.url}`];
     if (s.kind === "topup") return [`top-up ${base.txUrl(s.tx)}`];
     if (s.kind === "broadcast" && "hash" in s.result) return [`broadcast ${base.txUrl(s.result.hash)}`];
     if (s.kind === "mined") return [`mined (${s.status}) block ${s.block} ${base.txUrl(s.tx)}`];

@@ -3,7 +3,7 @@
  * step the security model promises, and writes `reports/e2e-<scenario>-<time>.md`.
  *
  *   bun run e2e                 all scenarios
- *   bun run e2e handover        one scenario (minting, handover, recovery)
+ *   bun run e2e handover        one scenario (minting, handover, recovery, lease)
  */
 import { contract } from "./context.ts";
 import { Run } from "./report.ts";

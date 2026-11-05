@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use near_api::types::transaction::actions::{Action, DeleteAccountAction, FunctionCallAction};
 use near_api::{
-    Account, AccountId, Contract, NearGas, NearToken, NetworkConfig, Signer, Transaction,
+    Account, AccountId, Chain, Contract, NearGas, NearToken, NetworkConfig, Signer, Transaction,
 };
 use near_sandbox::Sandbox;
 use serde_json::{Value, json};
@@ -107,6 +107,18 @@ impl TestChain {
         })
     }
 
+    async fn now_ms(&self) -> Result<u64> {
+        let block = Chain::block().fetch_from(&self.network).await?;
+        Ok(block.header.timestamp_nanosec.parse::<u64>()? / 1_000_000)
+    }
+
+    async fn wait_until(&self, ms: u64) -> Result {
+        while self.now_ms().await? < ms {
+            self.sandbox.fast_forward(10).await?;
+        }
+        Ok(())
+    }
+
     async fn view(&self, method: &str, args: Value) -> Result<Value> {
         Ok(Contract(self.lot.clone())
             .call_function(method, args)
@@ -132,6 +144,7 @@ impl TestChain {
 
 // The MPC fixture returns a fixed public key. This log pays that key's address;
 // cryptographic attestation stays covered by the real Base/MPC e2e suite.
+// The stream vests 1e30 units from 1970 to 2100, about 2.4e20 per second.
 fn creation_log() -> Value {
     let num = |n: u128| format!("{n:064x}");
     let address = |s: &str| format!("{:0>64}", s.trim_start_matches("0x"));
@@ -144,12 +157,12 @@ fn creation_log() -> Value {
         address("0x8af686edd999e3ab397cfe47e9e5b5d0dbc89e4d"),
         address("0x8af686edd999e3ab397cfe47e9e5b5d0dbc89e4d"),
         address(LOT_ADDRESS),
-        num(1000),
+        num(10u128.pow(30)),
         address("0xcdf24142f02ea7fcf5db8b1dfbc1dd25bf021f64"),
         num(0),
         num(0),
         num(1),
-        num(2),
+        num(4_102_444_800),
         num(0x140),
         num(6),
         format!("{:0<64}", "6c696e656172"),
@@ -349,5 +362,60 @@ async fn failed_payout_restores_credit_and_failed_signing_keeps_the_issued_nonce
         .await
         .is_err()
     );
+    Ok(())
+}
+
+// The fixture never signs, so Bob registers the public MPC signature of the real Base transfer
+// the unit tests replay: nonce 0, 10 tokens to 0x…a11c, with these fees and gas.
+const ALICE_EVM: &str = "0x000000000000000000000000000000000000a11c";
+const TRANSFER_R: &str = "0x7a6c1bc1d0adbf320bf1aecaec0004a1e73d28f61a9c0d4c6bb420ee4a5b80da";
+const TRANSFER_S: &str = "0x79debfc0980274b0b80868004bd634d1b286b2a3f331f3bd63f9e30e82768468";
+
+#[tokio::test]
+async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Result {
+    let c = TestChain::start().await?;
+    assert_eq!(c.mint("lease").await?["id"], 0);
+    let fees = json!({"max_fee":"1000000","max_prio":"1000000"});
+    c.call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 1).await?;
+    let ends_at_ms = c.now_ms().await? + 30_000;
+    c.call(&c.alice, &c.lot, "offer_lease", json!({"id":0,"price":ONE_NEAR.to_string(),"ends_at_ms":ends_at_ms}), 0).await?;
+    c.call(&c.bob, &c.lot, "take_lease", json!({"id":0,"version":1}), ONE_NEAR).await?;
+    assert_eq!(c.view("nft_token", json!({"token_id":"0-lease"})).await?["owner_id"], c.bob.as_str());
+
+    let transfer = json!({"id":0,"to":ALICE_EVM,"amount":"10000000000000000000","gas_limit":150000,
+        "fees":{"max_fee":"50000000","max_prio":"1000000"}});
+    let refused = c.call(&c.alice, &c.lot, "request_transfer", transfer.clone(), 1).await.unwrap_err();
+    assert!(refused.to_string().contains("not the lot controller"), "{refused}");
+    let start_ms = c.view("get_lot", json!({"id":0})).await?["lease"]["start_ms"].as_u64().unwrap();
+    c.wait_until(start_ms + 2_000).await?;
+    c.call(&c.bob, &c.lot, "request_transfer", transfer, 1).await?;
+    c.call(&c.bob, &c.lot, "register_signature", json!({"id":0,"seq":0,"r":TRANSFER_R,"s":TRANSFER_S,"v":1}), 0).await?;
+    assert_eq!(c.view("lease_budget", json!({"id":0})).await?["committed"], "10000000000000000000");
+
+    c.wait_until(ends_at_ms).await?;
+    c.call(&c.minter, &c.lot, "seal", json!({"id":0,"fees":{"max_fee":"55000000","max_prio":"1100000"}}), 1).await?;
+    let sealing = c.view("get_lot", json!({"id":0})).await?;
+    assert_eq!(sealing["state"], "Sealing");
+    assert_eq!(sealing["lease"]["holder"], c.bob.as_str(), "the lease holds until its signatures are proven consumed");
+
+    let proof = Contract(c.lot.clone())
+        .call_function("prove", json!({"id":0,"seq":0}))
+        .transaction()
+        .gas(NearGas::from_tgas(300))
+        .deposit(NearToken::from_yoctonear(1))
+        .with_signer(c.minter.clone(), c.signer.clone())
+        .send_to(&c.network)
+        .await?
+        .into_result()?;
+    assert_eq!(proof.json::<Value>()?, true);
+    assert!(
+        proof.logs().iter().any(|log| log.contains(r#""event":"nft_burn""#) && log.contains(r#""0-lease""#)),
+        "proving the last nonce burns the lease token"
+    );
+    let lot = c.view("get_lot", json!({"id":0})).await?;
+    assert_eq!((&lot["state"], &lot["lease"], &lot["next_nonce"]), (&json!("Clean"), &Value::Null, &json!(1)));
+    assert_eq!(c.view("nft_token", json!({"token_id":"0-lease"})).await?, Value::Null);
+    c.call(&c.alice, &c.lot, "unseal", json!({"id":0}), 0).await?;
+    assert_eq!(c.view("get_lot", json!({"id":0})).await?["state"], "Active", "control is back with alice");
     Ok(())
 }

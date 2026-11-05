@@ -30,3 +30,21 @@ test("an empty final page ends discovery without inspecting any lots", async () 
   }));
   expect(ids).toEqual([]);
 });
+
+test("lease tokens are skipped but still count toward the page offset", async () => {
+  const tokens = [{ token_id: "0" }, { token_id: "0-lease" }, ...Array.from({ length: 100 }, (_, i) => ({ token_id: String(i + 1) }))];
+  const reads: string[] = [];
+  const inspected: number[] = [];
+  await Array.fromAsync(pendingLots(
+    async (offset, limit) => {
+      reads.push(offset);
+      return tokens.slice(Number(offset), Number(offset) + limit);
+    },
+    async (id) => {
+      inspected.push(id);
+      return false;
+    },
+  ));
+  expect(reads).toEqual(["0", "100"]);
+  expect(inspected).toEqual(Array.from({ length: 101 }, (_, i) => i));
+});

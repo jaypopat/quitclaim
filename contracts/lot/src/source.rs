@@ -3,10 +3,11 @@
 //! recipient, non-cancelable, non-transferable, token), and asks MPC to attest that exact log mined
 //! at the contract's finality. The request and its expected payload hash come from `near-mpc-sdk`.
 
-use alloy_primitives::B256;
+use alloy_primitives::{B256, U256};
 use alloy_sol_types::{sol, SolEvent};
 use near_mpc_contract_interface::types::{DomainId, EvmLog, EvmTxId, VerifyForeignTransactionRequestArgs};
 use near_mpc_sdk::foreign_chain::ForeignChainRequestBuilder;
+use near_sdk::json_types::U128;
 use near_sdk::near;
 use near_sdk::serde_json;
 
@@ -71,7 +72,45 @@ pub struct Stream {
     pub id: u128,
     pub recipient: Address,
     pub token: Address,
-    pub deposit: u128,
+    pub schedule: Schedule,
+}
+
+/// A linear stream's vesting terms, from its attested creation log. Times are Unix seconds; a
+/// `cliff` of 0 means none. Sablier never stores a granularity of 0.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Schedule {
+    pub deposit: U128,
+    pub start: u64,
+    pub cliff: u64,
+    pub end: u64,
+    pub granularity: u64,
+    pub start_unlock: U128,
+    pub cliff_unlock: U128,
+}
+
+impl Schedule {
+    /// Sablier Lockup v4 `LockupMath.calculateStreamedAmountLL` at time `t`. Its fallback for a
+    /// streamed amount above the deposit is unreachable for a stream Sablier accepted, so it is left out.
+    pub fn vested(&self, t: u64) -> u128 {
+        if self.start > t {
+            return 0;
+        }
+        if self.cliff > t {
+            return self.start_unlock.0;
+        }
+        if self.end <= t {
+            return self.deposit.0;
+        }
+        let unlocks = self.start_unlock.0 + self.cliff_unlock.0;
+        if unlocks >= self.deposit.0 {
+            return self.deposit.0;
+        }
+        let from = if self.cliff == 0 { self.start } else { self.cliff };
+        let units = U256::from((t - from) / self.granularity);
+        let streamed = units * U256::from(self.deposit.0 - unlocks) * U256::from(self.granularity) / U256::from(self.end - from);
+        unlocks + streamed.to::<u128>()
+    }
 }
 
 fn log_data(log: &EvmLog) -> Result<Vec<u8>, &'static str> {
@@ -105,7 +144,15 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
         id: event.streamId.try_into().map_err(|_| "stream id exceeds u128")?,
         recipient: common.recipient,
         token: common.token,
-        deposit: common.depositAmount,
+        schedule: Schedule {
+            deposit: U128(common.depositAmount),
+            start: common.timestamps.start.to(),
+            cliff: event.cliffTime.to(),
+            end: common.timestamps.end.to(),
+            granularity: event.granularity.to(),
+            start_unlock: U128(event.unlockAmounts.start),
+            cliff_unlock: U128(event.unlockAmounts.cliff),
+        },
     })
 }
 

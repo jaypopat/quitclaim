@@ -14,6 +14,7 @@ export const minter = process.env.MINTER_ACCOUNT ?? env.deployer();
 export const keeper = process.env.KEEPER_ACCOUNT ?? bob;
 export const aliceEvm: Address = "0x000000000000000000000000000000000000a11c";
 export const bobEvm: Address = "0x0000000000000000000000000000000000000b0b";
+export const carolEvm: Address = "0x000000000000000000000000000000000000ca01";
 
 export const lotOf = (id: number): Promise<Lot> => mustLot(contract, id);
 
