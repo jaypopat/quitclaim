@@ -4,17 +4,22 @@
  *
  *   bun run gate1
  *
- * Lot A is the handover: claim, a retained claim, seal, proof, the heist, a sale with an issuer royalty,
- * pulled payouts, new owner claims.
+ * Each lot holds a real non-cancelable, non-transferable Sablier Lockup stream on Base Sepolia.
+ * A withdrawal is: anyone pulls the stream into the lot, then the owner gets an MPC-signed ERC-20
+ * transfer out of it.
+ *
+ * Lot A is the handover: withdraw, a retained withdrawal, seal, proof, the heist, an outsider pulling
+ * during the listing, a sale with an issuer royalty, pulled payouts, the new owner withdraws.
  * Lot B covers the paths lot A can't: the seller broadcasts first and the burn replaces it, and a
- * claim that mines but reverts, recovered by a rescue burn at the next nonce.
+ * transfer that mines but reverts, recovered by a rescue burn at the next nonce.
  */
 import { parseTransaction, recoverTransactionAddress, type Address, type Hex } from "viem";
 import { isBurn, type Lot } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import { call, codeHash, getFinality, getLot, view } from "./near.ts";
 import { env } from "./env.ts";
-import { buy, list, provision, rebump, relay, requestClaim, rescue, seal, withdraw, type RelayStep } from "./lot.ts";
+import { buy, list, position, provision, pullSource, rebump, relay, requestTransfer, rescue, seal, withdraw, type RelayStep } from "./lot.ts";
+import * as sablier from "./sablier.ts";
 
 const contract = env.lotContract();
 const alice = process.env.ALICE_ACCOUNT ?? env.admin();
@@ -52,6 +57,15 @@ const lotOf = async (id: number): Promise<Lot> => {
   return lot;
 };
 
+/** Anyone pulls the stream into the lot; then the owner signs a transfer of what the lot holds. */
+async function withdrawTo(signer: string, id: number, to: Address, override: Parameters<typeof requestTransfer>[4] = {}) {
+  const pulled = await pullSource(await lotOf(id));
+  const req = await requestTransfer(contract, signer, id, to, override);
+  return { pulled, req };
+}
+
+const pulledLink = (tx: Hex | null) => (tx ? [`pull ${base.txUrl(tx)}`] : []);
+
 const transfer = (from: string, id: number) =>
   call(from, contract, "nft_transfer", { receiver_id: bob, token_id: String(id) }, { deposit: 1n });
 
@@ -65,7 +79,7 @@ async function describeRetained(raw: Hex) {
     "",
     `- recovered sender: \`${from}\``,
     `- chain id: ${tx.chainId}, nonce: ${tx.nonce}, to: \`${tx.to}\``,
-    `- calldata: \`${tx.data}\` (claim(to=alice))`,
+    `- calldata: \`${tx.data}\` (token.transfer(to=alice, amount))`,
     "",
     "```",
     raw,
@@ -76,23 +90,26 @@ async function describeRetained(raw: Hex) {
 
 async function lotA() {
   const p = await provision({ contract, path: `gate1-a-${started.getTime()}`, owner: alice, issuer, royaltyBps: ROYALTY_BPS });
-  record("A: provision", "contract learns the derived address from MPC", `lot ${p.id} at ${p.address}`, true, [
+  record("A: provision", "Sablier stream pays the lot; title search clean; contract learns the address from MPC",
+    `lot ${p.id} at ${p.address}, stream ${p.streamId}, ${JSON.stringify(p.title)}`, p.title.clean, [
     p.mint.url,
-    `vesting ${base.txUrl(p.vestingTx)}`,
+    `stream ${base.txUrl(p.streamTx)}`,
     `gas ${base.txUrl(p.fundTx)}`,
   ]);
   const id = p.id;
 
-  const c0 = await requestClaim(contract, alice, id, aliceEvm);
-  record("A: alice claim 0", "contract-built claim(to=alice) signed", c0.ok ? "signed" : c0.error, c0.ok && !!c0.value, [c0.url]);
+  const w0 = await withdrawTo(alice, id, aliceEvm);
+  const c0 = w0.req;
+  record("A: alice withdraws", "stream pulled into the lot; contract-built transfer(to=alice) signed", c0.ok ? "signed" : c0.error, c0.ok && !!c0.value, [...pulledLink(w0.pulled), c0.url]);
   const r0 = await relay(contract, bob, id, () => true);
-  const aliceTokens = await base.tokenBalance(p.vesting, aliceEvm);
-  record("A: prove claim 0", "nonce 0 proven consumed, lot stays Active", `${r0.lot.state}, next_nonce ${r0.lot.next_nonce}, alice holds ${aliceTokens}`,
+  const aliceTokens = await base.tokenBalance(p.token, aliceEvm);
+  record("A: prove withdrawal", "nonce 0 proven consumed, lot stays Active", `${r0.lot.state}, next_nonce ${r0.lot.next_nonce}, alice holds ${aliceTokens}`,
     r0.lot.state === "Active" && r0.lot.next_nonce === 1 && aliceTokens > 0n, relayLinks(r0.steps));
 
-  const c1 = await requestClaim(contract, alice, id, aliceEvm);
+  const w1 = await withdrawTo(alice, id, aliceEvm);
+  const c1 = w1.req;
   const retained = c1.ok ? (c1.value as Hex | null) : null;
-  record("A: alice retains claim 1", "a valid signed claim(to=alice) at nonce 1, never broadcast", retained ? "signed and kept" : c1.ok ? "no raw" : c1.error, !!retained, [c1.url]);
+  record("A: alice retains a withdrawal", "a valid signed transfer(to=alice) at nonce 1, never broadcast", retained ? "signed and kept" : c1.ok ? "no raw" : c1.error, !!retained, [c1.url]);
   if (retained) await describeRetained(retained);
 
   const t1 = await transfer(alice, id);
@@ -104,7 +121,7 @@ async function lotA() {
   record("A: alice seals", "Sealing, burn signed at nonce 1 with both fees bumped", `${sealed.state}, issued ${sealed.issued.map((i) => (isBurn(i) ? "burn" : "claim")).join("+")}`,
     s.ok && sealed.state === "Sealing" && sealed.issued.some(isBurn), [s.url]);
 
-  const refused = await requestClaim(contract, alice, id, aliceEvm);
+  const refused = await requestTransfer(contract, alice, id, aliceEvm, { amount: 1n, gasLimit: 80_000 });
   record("A: alice requests while Sealing", "refused: lot is not Active", refused.ok ? "signed!" : refused.error, !refused.ok && refused.error.includes("not Active"), [refused.url]);
 
   const early = await list(contract, alice, id, PRICE);
@@ -114,7 +131,7 @@ async function lotA() {
   record("A: prove burn", "old nonce proven consumed: Clean", `${r1.lot.state} v${r1.lot.version}, next_nonce ${r1.lot.next_nonce}`, r1.lot.state === "Clean" && r1.lot.next_nonce === 2, relayLinks(r1.steps));
 
   const heist = retained ? await base.broadcast(retained) : null;
-  record("A: alice broadcasts the retained claim", "Base rejects it: its nonce was consumed", heist ? ("message" in heist ? heist.message.split("\n")[0]! : `accepted ${heist.hash}`) : "no retained tx",
+  record("A: alice broadcasts the retained withdrawal", "Base rejects it: its nonce was consumed", heist ? ("message" in heist ? heist.message.split("\n")[0]! : `accepted ${heist.hash}`) : "no retained tx",
     heist?.status === "nonce-too-low");
 
   const sellerBefore = BigInt(await view(contract, "proceeds_of", { account_id: alice }));
@@ -123,6 +140,14 @@ async function lotA() {
   const listed = await lotOf(id);
   record("A: alice lists the Clean lot", "listing bound to the current version", `price ${listed.listing?.price}, version ${listed.listing?.version}`,
     l.ok && listed.listing?.version === listed.version, [l.url]);
+
+  const before = await position(listed);
+  const outsider = await pullSource(listed);
+  const after = await position(listed);
+  const stillListed = await lotOf(id);
+  record("A: outsider pulls the stream while listed", "value moves from the stream into the lot; the total never drops; the listing stands",
+    `locked ${before.locked} -> ${after.locked}, held ${before.held} -> ${after.held}, total ${before.total} -> ${after.total}`,
+    after.total === before.total && after.held >= before.held && stillListed.listing?.version === stillListed.version, pulledLink(outsider));
 
   const sale = await buy(contract, bob, id);
   const moved = await lotOf(id);
@@ -139,16 +164,18 @@ async function lotA() {
     `seller ${ws.ok ? ws.value : ws.error}, issuer ${wi.ok ? wi.value : wi.error}`,
     ws.ok && ws.value === true && wi.ok && wi.value === true && (await view(contract, "proceeds_of", { account_id: alice })) === "0", [ws.url, wi.url]);
 
-  const locked = await requestClaim(contract, alice, id, aliceEvm);
+  const locked = await requestTransfer(contract, alice, id, aliceEvm, { amount: 1n, gasLimit: 80_000 });
   record("A: alice requests after transfer", "refused: not the lot owner", locked.ok ? "signed!" : locked.error, !locked.ok && locked.error.includes("not the lot owner"), [locked.url]);
 
-  const before = await base.tokenBalance(p.vesting, aliceEvm);
-  const b = await requestClaim(contract, bob, id, bobEvm);
+  const aliceBefore = await base.tokenBalance(p.token, aliceEvm);
+  const wb = await withdrawTo(bob, id, bobEvm);
   const rb = await relay(contract, bob, id, () => true);
-  const bobTokens = await base.tokenBalance(p.vesting, bobEvm);
-  const after = await base.tokenBalance(p.vesting, aliceEvm);
-  record("A: bob claims", "bob's claim pays bob; alice's balance unchanged", `bob holds ${bobTokens}, alice ${before} -> ${after}`,
-    b.ok && bobTokens > 0n && before === after, [b.url, ...relayLinks(rb.steps)]);
+  const bobTokens = await base.tokenBalance(p.token, bobEvm);
+  const aliceAfter = await base.tokenBalance(p.token, aliceEvm);
+  const title = await sablier.titleSearch(p.streamId, p.address, p.token);
+  record("A: bob withdraws", "bob's withdrawal pays bob; alice's balance unchanged; the stream still pays the same address",
+    `bob holds ${bobTokens}, alice ${aliceBefore} -> ${aliceAfter}, title clean=${title.clean}`,
+    wb.req.ok && bobTokens > 0n && aliceBefore === aliceAfter && title.clean, [...pulledLink(wb.pulled), wb.req.url, ...relayLinks(rb.steps)]);
   return p;
 }
 
@@ -157,11 +184,12 @@ async function lotB() {
   record("B: provision", "second fresh lot", `lot ${p.id} at ${p.address}`, true, [p.mint.url]);
   const id = p.id;
 
-  const low = await requestClaim(contract, alice, id, aliceEvm, { fees: { max_fee: "1000000", max_prio: "1000000" } });
+  const lowW = await withdrawTo(alice, id, aliceEvm, { fees: { max_fee: "1000000", max_prio: "1000000" } });
+  const low = lowW.req;
   const lowRaw = low.ok ? (low.value as Hex | null) : null;
   const sent = lowRaw ? await base.broadcast(lowRaw) : null;
   const lowHash = sent && "hash" in sent ? sent.hash : null;
-  record("B: alice broadcasts first", "her claim is in the pool but priced below the base fee, so it can't mine yet",
+  record("B: alice broadcasts first", "her withdrawal is in the pool but priced below the base fee, so it can't mine yet",
     sent ? sent.status : low.ok ? "no raw" : low.error, sent?.status === "sent" || sent?.status === "known", [low.url, ...(lowHash ? [`pending ${base.txUrl(lowHash)}`] : [])]);
 
   const s = await seal(contract, alice, id, { max_fee: "1100000", max_prio: "1100000" });
@@ -177,14 +205,15 @@ async function lotB() {
   const r = await relay(contract, bob, id, isBurn);
   const gone = lowHash ? (await base.receipt(lowHash)) === null : false;
   const again = lowRaw ? await base.broadcast(lowRaw) : null;
-  record("B: burn replaces the pending claim", "burn mines at her nonce, her tx never mines, rebroadcast is rejected",
+  record("B: burn replaces the pending withdrawal", "burn mines at her nonce, her tx never mines, rebroadcast is rejected",
     `${r.lot.state}; alice's tx mined=${!gone}; rebroadcast: ${again && "message" in again ? again.message.split("\n")[0] : again?.status}`,
     r.lot.state === "Clean" && gone && again?.status === "nonce-too-low", [s.url, ...relayLinks(r.steps)]);
 
   const u = await call(alice, contract, "unseal", { id });
-  const bad = await requestClaim(contract, alice, id, aliceEvm, { gasLimit: 30_000 });
+  const held = await base.tokenBalance(p.token, p.address);
+  const bad = await requestTransfer(contract, alice, id, aliceEvm, { amount: held + 10n ** 30n, gasLimit: 80_000 });
   const rv = await relay(contract, bob, id, () => true);
-  record("B: claim mines but reverts", "a reverted tx consumes the nonce but can never be proven",
+  record("B: transfer mines but reverts", "more than the lot holds: the tx consumes the nonce but can never be proven",
     `reverted=${rv.reverted}, proven=${rv.proven}, next_nonce ${rv.lot.next_nonce}`, rv.reverted && !rv.proven, [u.url, bad.url, ...relayLinks(rv.steps)]);
 
   const s2 = await seal(contract, alice, id);

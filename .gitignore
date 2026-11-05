@@ -40,6 +40,6 @@ spikes/
 target/
 
 # foundry
-contracts/vesting/out/
-contracts/vesting/cache/
-contracts/vesting/broadcast/
+contracts/evm/out/
+contracts/evm/cache/
+contracts/evm/broadcast/

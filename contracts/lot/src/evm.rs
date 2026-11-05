@@ -6,11 +6,11 @@ use crate::types::{Fees, Issued, Kind};
 
 pub const CHAIN_ID: u64 = 84532;
 pub const BURN_GAS_LIMIT: u64 = 21_000;
-pub const MAX_CLAIM_GAS_LIMIT: u64 = 500_000;
-pub const CLAIM_FEE_CAP: u128 = 5_000_000_000;
-pub const CLAIM_PRIO_CAP: u128 = 1_000_000_000;
-pub const BURN_FEE_CAP: u128 = 2 * CLAIM_FEE_CAP;
-pub const BURN_PRIO_CAP: u128 = 2 * CLAIM_PRIO_CAP;
+pub const MAX_TRANSFER_GAS_LIMIT: u64 = 500_000;
+pub const TRANSFER_FEE_CAP: u128 = 5_000_000_000;
+pub const TRANSFER_PRIO_CAP: u128 = 1_000_000_000;
+pub const BURN_FEE_CAP: u128 = 2 * TRANSFER_FEE_CAP;
+pub const BURN_PRIO_CAP: u128 = 2 * TRANSFER_PRIO_CAP;
 /// With a nonzero floor, the 10% bump makes every replacement strictly pricier, so the number of
 /// txs at one nonce is bounded by the caps; the explicit limit bounds contract-paid storage.
 pub const MIN_FEE: u128 = 1_000_000;
@@ -36,17 +36,19 @@ pub fn address_from_uncompressed(pk: &[u8; 64]) -> Address {
     env::keccak256_array(pk)[12..].try_into().unwrap()
 }
 
-pub fn claim_calldata(to: &Address) -> Vec<u8> {
-    let mut data = env::keccak256_array(b"claim(address)")[..4].to_vec();
+pub fn transfer_calldata(to: &Address, amount: u128) -> Vec<u8> {
+    let mut data = env::keccak256_array(b"transfer(address,uint256)")[..4].to_vec();
     data.extend_from_slice(&[0u8; 12]);
     data.extend_from_slice(to);
+    data.extend_from_slice(&[0u8; 16]);
+    data.extend_from_slice(&amount.to_be_bytes());
     data
 }
 
 /// The exact EIP-1559 tx an issued entry stands for. `lot` is the burn's self-transfer target.
-pub fn build(issued: &Issued, lot: &Address, vesting: &Address) -> EVMTransaction {
+pub fn build(issued: &Issued, lot: &Address, token: &Address) -> EVMTransaction {
     let (to, input) = match &issued.kind {
-        Kind::Claim { to } => (*vesting, claim_calldata(&parse_address(to).unwrap())),
+        Kind::Transfer { to, amount } => (*token, transfer_calldata(&parse_address(to).unwrap(), amount.0)),
         Kind::Burn => (*lot, vec![]),
     };
     EVMTransaction {
@@ -70,7 +72,7 @@ pub fn signing_hash(tx: &EVMTransaction) -> [u8; 32] {
 /// there: nodes reject a replacement that raises only one, and the old tx stays live.
 pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Result<(), &'static str> {
     let (fee_cap, prio_cap) = match kind {
-        Kind::Claim { .. } => (CLAIM_FEE_CAP, CLAIM_PRIO_CAP),
+        Kind::Transfer { .. } => (TRANSFER_FEE_CAP, TRANSFER_PRIO_CAP),
         Kind::Burn => (BURN_FEE_CAP, BURN_PRIO_CAP),
     };
     if fees.max_fee.0 > fee_cap || fees.max_prio.0 > prio_cap {
