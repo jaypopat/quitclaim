@@ -1213,6 +1213,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8452105ba047068f40ff7093dd1d9da90898e63dd61736462e9cdda6a90ad3c3"
 
 [[package]]
+name = "mpc-primitives"
+version = "3.18.0"
+source = "git+https://github.com/near/mpc?rev=e691bdb98d68dcf74653da58d043453a6318765f#e691bdb98d68dcf74653da58d043453a6318765f"
+dependencies = [
+ "borsh",
+ "derive_more",
+ "hex",
+ "near-account-id 3.0.0",
+ "schemars 0.8.22",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "near-account-id"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1228,6 +1242,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d2c8642aeca89873dbcf2a2f74ff90cd87f6691f11b66aeed2af7c136192d10"
 dependencies = [
  "borsh",
+ "schemars 0.8.22",
  "serde",
 ]
 
@@ -1335,6 +1350,53 @@ dependencies = [
  "serde",
  "serde_with",
  "sha3 0.11.0",
+]
+
+[[package]]
+name = "near-mpc-bounded-collections"
+version = "0.0.1"
+source = "git+https://github.com/near/mpc?rev=e691bdb98d68dcf74653da58d043453a6318765f#e691bdb98d68dcf74653da58d043453a6318765f"
+dependencies = [
+ "borsh",
+ "derive_more",
+ "hex",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "near-mpc-contract-interface"
+version = "0.0.1"
+source = "git+https://github.com/near/mpc?rev=e691bdb98d68dcf74653da58d043453a6318765f#e691bdb98d68dcf74653da58d043453a6318765f"
+dependencies = [
+ "borsh",
+ "derive_more",
+ "mpc-primitives",
+ "near-mpc-bounded-collections",
+ "near-mpc-crypto-types",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "sha2 0.10.9",
+ "thiserror",
+]
+
+[[package]]
+name = "near-mpc-crypto-types"
+version = "0.0.1"
+source = "git+https://github.com/near/mpc?rev=e691bdb98d68dcf74653da58d043453a6318765f#e691bdb98d68dcf74653da58d043453a6318765f"
+dependencies = [
+ "borsh",
+ "bs58 0.5.1",
+ "derive_more",
+ "mpc-primitives",
+ "near-account-id 3.0.0",
+ "near-mpc-bounded-collections",
+ "serde",
+ "serde_with",
+ "sha3 0.10.9",
+ "thiserror",
 ]
 
 [[package]]
@@ -1851,9 +1913,11 @@ dependencies = [
  "bs58 0.5.1",
  "hex",
  "near-contract-standards",
+ "near-mpc-contract-interface",
  "near-sdk",
  "omni-transaction",
  "schemars 0.8.22",
+ "serde_json",
 ]
 
 [[package]]

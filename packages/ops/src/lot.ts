@@ -2,10 +2,12 @@ import type { Address, Hex } from "viem";
 import { fetchLotAddress, nextFees, type Fees, type Lot, type LotCalls } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
-import { call, getLot, type CallOutcome } from "./near.ts";
+import { call, getFinality, getLot, type CallOutcome } from "./near.ts";
 import { env } from "./env.ts";
 
 const YOCTO = 1n;
+/** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
+export const MINT_DEPOSIT = 50_000_000_000_000_000_000_000n;
 
 export type Provisioned = {
   id: number;
@@ -15,16 +17,18 @@ export type Provisioned = {
   streamTx: Hex;
   fundTx: Hex;
   title: sablier.TitleSearch;
-  mint: CallOutcome<LotCalls["mint"]["result"]>;
+  mint: CallOutcome<LotCalls["mint_proven"]["result"]>;
 };
 
 /**
- * Issuer provisioning: derive the address, create a non-cancelable, non-transferable Sablier stream
- * paying it, title-search the stream, fund gas, and mint the title bound to the token and stream.
+ * Issuer provisioning, with no trusted admin: derive the lot address in the issuer's namespace
+ * (`<issuer>/<name>`), create a non-cancelable, non-transferable Sablier stream paying it, fund gas,
+ * wait for the contract's finality, then the issuer mints. The contract decodes the stream's creation
+ * log and has MPC attest it before the title exists.
  */
 export async function provision(opts: {
   contract: string;
-  path: string;
+  name: string;
   owner: string;
   issuer: string;
   royaltyBps?: number;
@@ -33,20 +37,19 @@ export async function provision(opts: {
   gasFund?: bigint;
 }): Promise<Provisioned> {
   const token = env.token();
-  const address = await fetchLotAddress(opts.contract, opts.path);
+  const address = await fetchLotAddress(opts.contract, `${opts.issuer}/${opts.name}`);
   const stream = await sablier.createStream(address, token, opts.total ?? 1_000n * 10n ** 18n, opts.durationSec ?? 3_600);
   const title = await sablier.titleSearch(stream.id, address, token);
   if (!title.clean) throw new Error(`stream ${stream.id} fails title search: ${JSON.stringify(title)}`);
   const fundTx = await base.fund(address, opts.gasFund ?? 2_000_000_000_000_000n);
-  const mint = await call(env.admin(), opts.contract, "mint", {
-    path: opts.path,
-    token,
-    source: { kind: sablier.SOURCE_KIND, contract: sablier.LOCKUP, id: stream.id.toString() },
+  await base.waitFinality(stream.block, await getFinality(opts.contract));
+  const mint = await call(opts.issuer, opts.contract, "mint_proven", {
+    name: opts.name,
     owner_id: opts.owner,
-    issuer: opts.issuer,
     royalty_bps: opts.royaltyBps ?? 250,
-  });
-  if (!mint.ok || !mint.value) throw new Error(`mint failed: ${mint.ok ? "derivation rolled back" : mint.error}`);
+    log: stream.log,
+  }, { deposit: MINT_DEPOSIT });
+  if (!mint.ok || !mint.value) throw new Error(`mint failed: ${mint.ok ? "rolled back (see contract logs)" : mint.error}`);
   if (mint.value.address.toLowerCase() !== address.toLowerCase()) {
     throw new Error(`contract derived ${mint.value.address}, expected ${address}`);
   }
@@ -55,14 +58,13 @@ export async function provision(opts: {
 
 /** Moves whatever the lot's stream has vested into the lot. Anyone may do this. */
 export async function pullSource(lot: Lot) {
-  if (!lot.source) return null;
   return sablier.pull(BigInt(lot.source.id), lot.address as Address);
 }
 
 /** The lot's whole position in token units: still in the stream plus already held at the address. */
 export async function position(lot: Lot) {
   const held = await base.tokenBalance(lot.token as Address, lot.address as Address);
-  const locked = lot.source ? await sablier.remaining(BigInt(lot.source.id)) : 0n;
+  const locked = await sablier.remaining(BigInt(lot.source.id));
   return { held, locked, total: held + locked };
 }
 

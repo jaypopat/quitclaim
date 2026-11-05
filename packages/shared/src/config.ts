@@ -13,7 +13,7 @@ export const config = {
     chainId: 84532,
     foreignChain: "Base",
     /** Tried in order. Override with `BASE_RPCS` (comma-separated). */
-    rpcUrls: list(process.env.BASE_RPCS ?? process.env.BASE_RPC, [
+    rpcUrls: list(process.env.BASE_RPCS, [
       "https://base-sepolia-rpc.publicnode.com",
       "https://sepolia.base.org",
       "https://84532.rpc.thirdweb.com",

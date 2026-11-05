@@ -2,6 +2,7 @@ mod evm;
 mod mpc;
 mod nft;
 mod sale;
+mod source;
 mod types;
 
 #[cfg(test)]
@@ -12,18 +13,22 @@ use near_sdk::json_types::U128;
 use near_sdk::serde_json::Value;
 use near_sdk::store::{IterableMap, LookupMap, LookupSet};
 use near_sdk::{
-    env, log, near, require, AccountId, Gas, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
+    env, log, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
 };
 
-pub use types::{Fees, Finality, Issued, Kind, Listing, Lot, LotId, LotState, MintedLot, Payout, Source};
+pub use source::CreationLog;
+pub use types::{Config, Fees, Finality, Issued, Kind, Listing, Lot, LotId, LotState, MintedLot, Payout, Source};
 
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
+const MAX_NAME_LEN: usize = 64;
+/// Room to forward the verify call (50 Tgas) and schedule its callback.
+const DERIVED_CALLBACK_GAS: Gas = Gas::from_tgas(90);
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
     signer: AccountId,
-    admin: AccountId,
+    lockup: evm::Address,
     finality: Finality,
     lots: IterableMap<LotId, Lot>,
     paths: LookupSet<String>,
@@ -86,10 +91,10 @@ impl Contract {
 #[near]
 impl Contract {
     #[init]
-    pub fn new(signer: AccountId, admin: AccountId, finality: Finality) -> Self {
+    pub fn new(signer: AccountId, lockup: String, finality: Finality) -> Self {
         Self {
             signer,
-            admin,
+            lockup: evm::parse_address(&lockup).unwrap_or_else(|| env::panic_str("lockup must be a 0x address")),
             finality,
             lots: IterableMap::new(b"l"),
             paths: LookupSet::new(b"p"),
@@ -98,20 +103,24 @@ impl Contract {
         }
     }
 
-    /// Admin-only (issuer provisioning). Paths are unique: two lots on one path would share an address.
-    pub fn mint(
-        &mut self,
-        path: String,
-        token: String,
-        source: Option<Source>,
-        owner_id: AccountId,
-        issuer: AccountId,
-        royalty_bps: u16,
-    ) -> Promise {
-        require!(env::predecessor_account_id() == self.admin, "only the admin can mint");
+    /// Mints a lot whose source is a Sablier stream the caller created, proven by MPC from the
+    /// stream's creation log. The path is `<caller>/<name>`, so a lot's address belongs to its
+    /// issuer's namespace: nobody else can mint a title over a stream paying that address.
+    ///
+    /// The caller pays for the lot's storage; any excess deposit is refunded, and a mint that rolls
+    /// back refunds the storage too.
+    #[payable]
+    pub fn mint_proven(&mut self, name: String, owner_id: AccountId, royalty_bps: u16, log: CreationLog) -> Promise {
         require!(royalty_bps <= sale::MAX_ROYALTY_BPS, "royalty above the 10% cap");
-        require!(evm::parse_address(&token).is_some(), "token must be a 0x address");
-        require!(source.as_ref().is_none_or(|s| evm::parse_address(&s.contract).is_some()), "source contract must be a 0x address");
+        require!(
+            (1..=MAX_NAME_LEN).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)),
+            "name must be 1-64 chars of [A-Za-z0-9._-]"
+        );
+        let stream = source::decode(&log, &self.lockup).unwrap_or_else(|e| env::panic_str(e));
+        source::verify_args(&log, self.finality).unwrap_or_else(|e| env::panic_str(e));
+        let before = env::storage_usage();
+        let issuer = env::predecessor_account_id();
+        let path = format!("{issuer}/{name}");
         require!(self.paths.insert(path.clone()), "path already used");
         let id = self.next_id;
         self.next_id += 1;
@@ -122,8 +131,12 @@ impl Contract {
                 issuer,
                 path: path.clone(),
                 address: None,
-                token,
-                source,
+                token: evm::format_address(&stream.token),
+                source: Source {
+                    kind: source::SOURCE_KIND.to_string(),
+                    contract: evm::format_address(&self.lockup),
+                    id: U128(stream.id),
+                },
                 state: LotState::Minting,
                 version: 0,
                 next_nonce: 0,
@@ -134,35 +147,71 @@ impl Contract {
                 listing: None,
             },
         );
+        let storage = env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128);
+        let needed = storage.saturating_add(mpc::REQUEST_DEPOSIT);
+        let attached = env::attached_deposit();
+        require!(attached >= needed, format!("attach at least {} yoctoNEAR: storage plus the MPC deposit", needed.as_yoctonear()));
+        if attached > needed {
+            Promise::new(env::predecessor_account_id()).transfer(attached.saturating_sub(needed)).detach();
+        }
         Promise::new(self.signer.clone())
             .function_call(
                 "derived_public_key".to_string(),
                 mpc::derived_key_args(&path, env::current_account_id().as_str()),
-                near_sdk::NearToken::from_yoctonear(0),
+                NearToken::from_yoctonear(0),
                 Gas::from_tgas(10),
             )
-            .then(Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS).on_derived(id))
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(DERIVED_CALLBACK_GAS)
+                    .on_derived(id, evm::format_address(&stream.recipient), log, storage),
+            )
     }
 
     #[private]
-    pub fn on_derived(&mut self, id: LotId, #[callback_result] key: Result<String, PromiseError>) -> Option<MintedLot> {
-        let mut lot = self.lot(id);
+    pub fn on_derived(
+        &mut self,
+        id: LotId,
+        recipient: String,
+        log: CreationLog,
+        storage: NearToken,
+        #[callback_result] key: Result<String, PromiseError>,
+    ) -> PromiseOrValue<Option<MintedLot>> {
         let Some(pk) = key.ok().as_deref().and_then(mpc::parse_derived_key) else {
-            log!("lot {} derivation failed; mint rolled back", id);
-            self.paths.remove(&lot.path);
-            self.lots.remove(&id);
-            return None;
+            return PromiseOrValue::Value(self.roll_back(id, "derivation failed", storage));
         };
         let address = evm::format_address(&evm::address_from_uncompressed(&pk));
-        lot.address = Some(address.clone());
+        if address != recipient {
+            return PromiseOrValue::Value(self.roll_back(id, "the stream does not pay this lot's address", storage));
+        }
+        let args = match source::verify_args(&log, self.finality) {
+            Ok(args) => args,
+            Err(e) => return PromiseOrValue::Value(self.roll_back(id, e, storage)),
+        };
+        let mut lot = self.lot(id);
+        lot.address = Some(address);
+        self.lots.insert(id, lot);
+        PromiseOrValue::Promise(
+            Promise::new(self.signer.clone())
+                .function_call("verify_foreign_transaction".to_string(), args, mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
+                .then(Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS).on_mint_verified(id, storage)),
+        )
+    }
+
+    /// MPC answers only if Base has exactly the attested log at the contract's finality.
+    #[private]
+    pub fn on_mint_verified(&mut self, id: LotId, storage: NearToken, #[callback_result] r: Result<Value, PromiseError>) -> Option<MintedLot> {
+        if r.is_err() {
+            return self.roll_back(id, "MPC did not attest the creation log", storage);
+        }
+        let mut lot = self.lot(id);
+        let address = lot.address.clone().expect("set in on_derived");
         lot.state = LotState::Active;
         NftMint { owner_id: &lot.owner, token_ids: &[&id.to_string()], memo: Some(&address) }.emit();
         self.lots.insert(id, lot);
         Some(MintedLot { id, address })
     }
 
-    /// The owner moves tokens out of the lot. Outsiders can only add to the lot's balance, so a
-    /// transfer of at most the current balance can't be griefed into reverting.
     #[payable]
     pub fn request_transfer(&mut self, id: LotId, to: String, amount: U128, gas_limit: u64, fees: Fees) -> Promise {
         require_deposit();
@@ -327,12 +376,24 @@ impl Contract {
         self.lots.get(&id).cloned()
     }
 
-    pub fn get_config(&self) -> (AccountId, AccountId, Finality) {
-        (self.signer.clone(), self.admin.clone(), self.finality)
+    pub fn get_config(&self) -> Config {
+        Config { signer: self.signer.clone(), lockup: evm::format_address(&self.lockup), finality: self.finality }
     }
 }
 
 impl Contract {
+    /// Frees the lot and its path and refunds the issuer's storage deposit.
+    fn roll_back(&mut self, id: LotId, why: &str, storage: NearToken) -> Option<MintedLot> {
+        log!("lot {} not minted: {}", id, why);
+        if let Some(lot) = self.lots.remove(&id) {
+            self.paths.remove(&lot.path);
+            if !storage.is_zero() {
+                Promise::new(lot.issuer).transfer(storage).detach();
+            }
+        }
+        None
+    }
+
     /// Every title move goes through here: `nft_transfer` by the owner, or `buy`.
     fn move_title(&mut self, id: LotId, mut lot: Lot, receiver_id: AccountId, memo: Option<&str>) {
         require!(lot.state == LotState::Clean, "lot is not Clean");

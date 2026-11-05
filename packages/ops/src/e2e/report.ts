@@ -1,4 +1,4 @@
-import { parseTransaction, recoverTransactionAddress, type Hex } from "viem";
+import { parseTransaction, recoverTransactionAddress, type Hex, type TransactionSerialized } from "viem";
 import * as base from "../base.ts";
 import type { SettleStep } from "../keeper.ts";
 import { codeHash, getFinality } from "../near.ts";
@@ -25,7 +25,7 @@ export class Run {
 
   async describeRetained(raw: Hex) {
     const tx = parseTransaction(raw);
-    const from = await recoverTransactionAddress({ serializedTransaction: raw as never });
+    const from = await recoverTransactionAddress({ serializedTransaction: raw as TransactionSerialized });
     this.notes.push(
       "## Retained transaction (the heist)",
       "",
@@ -79,6 +79,7 @@ export function settleLinks(steps: SettleStep[]) {
     if (s.kind === "broadcast" && "hash" in s.result) return [`broadcast ${base.txUrl(s.result.hash)}`];
     if (s.kind === "mined") return [`mined (${s.status}) block ${s.block} ${base.txUrl(s.tx)}`];
     if (s.kind === "rescue") return [`rescue ${s.outcome.url}`];
+    if (s.kind === "rebump") return [`rebump nonce ${s.nonce} ${s.outcome.url}`];
     if (s.kind === "prove") return [`prove ${s.outcome.url}`];
     return [];
   });

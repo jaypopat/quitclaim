@@ -12,13 +12,12 @@ export type Kind =
 export type LotState = "Minting" | "Active" | "Sealing" | "Clean";
 export type PromiseOrValueBoolean = boolean;
 export type PromiseOrValueLotState = "Minting" | "Active" | "Sealing" | "Clean";
+export type PromiseOrValueNullable_MintedLot = MintedLot | null;
 export type BuyResult = null;
 export type DelistResult = null;
-export type GetConfigResult = [string, string, Finality];
 export type GetLotResult = Lot | null;
 export type ListResult = null;
-export type MintResult = MintedLot | null;
-export type NftApproveResult = null;
+export type MintProvenResult = MintedLot | null;
 export type NftSupplyForOwnerResult = string;
 export type NftTokenResult = Token | null;
 export type NftTokensResult = Token[];
@@ -33,6 +32,25 @@ export type SealResult = RebumpResult | LotState;
 export type UnsealResult = null;
 export type WithdrawProceedsResult = boolean;
 
+export interface Config {
+  finality: Finality;
+  /**
+   * The Sablier Lockup a lot's source stream must come from.
+   */
+  lockup: string;
+  signer: string;
+}
+export interface CreationLog {
+  address: string;
+  block_hash: string;
+  block_number: number;
+  data: string;
+  log_index: number;
+  removed: boolean;
+  topics: string[];
+  transaction_hash: string;
+  transaction_index: number;
+}
 export interface Fees {
   max_fee: string;
   max_prio: string;
@@ -74,9 +92,9 @@ export interface Lot {
   royalty_bps: number;
   sign_in_flight: boolean;
   /**
-   * The position that pays out to the lot address, recorded for buyers' title search. Informational: the contract never signs calls to it.
+   * The position that pays out to the lot address, proven from its creation log at mint. The contract never signs calls to it.
    */
-  source?: Source | null;
+  source: Source;
   state: LotState;
   /**
    * The ERC-20 the lot holds, fixed at mint. The only contract a lot signs calls to.
@@ -147,18 +165,11 @@ export interface ListArgs {
   id: number;
   price: string;
 }
-export interface MintArgs {
-  path: string;
-  token: string;
-  source?: Source | null;
+export interface MintProvenArgs {
+  name: string;
   owner_id: string;
-  issuer: string;
   royalty_bps: number;
-}
-export interface NftApproveArgs {
-  token_id: string;
-  account_id: string;
-  msg?: string | null;
+  log: CreationLog;
 }
 export interface NftMetadataArgs {}
 export interface NftPayoutArgs {
@@ -234,6 +245,7 @@ export interface UnsealArgs {
 }
 export interface WithdrawProceedsArgs {}
 
+export type GetConfigResult = Config;
 export type NftMetadataResult = NFTContractMetadata;
 export type NftPayoutResult = Payout;
 export type NftTransferCallResult = PromiseOrValueBoolean;
@@ -257,8 +269,7 @@ export interface LotCalls {
   buy: { args: BuyArgs; result: BuyResult; payable: true };
   delist: { args: DelistArgs; result: DelistResult; payable: false };
   list: { args: ListArgs; result: ListResult; payable: false };
-  mint: { args: MintArgs; result: MintResult; payable: false };
-  nft_approve: { args: NftApproveArgs; result: NftApproveResult; payable: true };
+  mint_proven: { args: MintProvenArgs; result: MintProvenResult; payable: true };
   nft_transfer: { args: NftTransferArgs; result: NftTransferResult; payable: true };
   nft_transfer_call: { args: NftTransferCallArgs; result: NftTransferCallResult; payable: true };
   prove: { args: ProveArgs; result: ProveResult; payable: true };

@@ -9,7 +9,8 @@ function need(name: string): string {
 export const env = {
   funderKey: () => need("FUNDER_PK") as Hex,
   lotContract: () => need("LOT_CONTRACT"),
-  admin: () => need("ADMIN_ACCOUNT"),
+  /** Parent account for `deploy-lot`; it has no power over deployed contracts. */
+  deployer: () => need("DEPLOYER_ACCOUNT"),
   token: () => need("TOKEN") as `0x${string}`,
   credentialsDir: process.env.NEAR_CREDENTIALS_DIR ?? `${process.env.HOME}/.near-credentials/testnet`,
 };

@@ -6,9 +6,9 @@ import { mustLot, pullSource, requestTransfer } from "../lot.ts";
 import { call } from "../near.ts";
 
 export const contract = env.lotContract();
-export const alice = process.env.ALICE_ACCOUNT ?? env.admin();
-export const bob = process.env.BOB_ACCOUNT ?? `bob.${env.admin()}`;
-export const issuer = process.env.ISSUER_ACCOUNT ?? env.admin();
+export const alice = process.env.ALICE_ACCOUNT ?? env.deployer();
+export const bob = process.env.BOB_ACCOUNT ?? `bob.${env.deployer()}`;
+export const issuer = process.env.ISSUER_ACCOUNT ?? env.deployer();
 /** Proves and rescues; any account works, since both are permissionless. */
 export const keeper = process.env.KEEPER_ACCOUNT ?? bob;
 export const aliceEvm: Address = "0x000000000000000000000000000000000000a11c";
