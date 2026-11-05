@@ -6,14 +6,16 @@ Locked tokens already change hands over the counter, settled on trust. Buy someo
 
 Quitclaim makes the handover provable. A NEP-171 NFT on NEAR controls a Base Sepolia address through NEAR Chain Signatures, and no one ever holds its key. Before control changes hands, the contract burns the seller's outstanding Base nonce and NEAR MPC proves the burn landed. Anything the seller kept is now invalid.
 
-## Try it
+## The proof, on chain
 
-```sh
-bun install
-bun run heist
-```
+Alice owned a lot paying out a Sablier stream. Before selling it to Bob she signed a withdrawal to herself and kept it. Then:
 
-No wallet, keys or funds. It replays the withdrawal Alice signed and kept before selling, and Base rejects it with `nonce too low`. The [judge guide](JUDGE.md) links every transaction.
+1. Sealing the lot [burned her nonce on Base](https://sepolia.basescan.org/tx/0x1155eba522eb8bfc47fc7f4ad69782566131078ca87b2421f7de30455f933499).
+2. NEAR MPC [proved the burn](https://testnet.nearblocks.io/txns/HyjkRYt84RQcbDdjiqTHun83mkz8op4RgUrHWaG7KPJw).
+3. Bob [bought the title](https://testnet.nearblocks.io/txns/AS4Do5zxZATgCeBpFxEpAXRDch4QgdqwkW2c4Hequ3XA) and [withdrew to himself](https://sepolia.basescan.org/tx/0xc59f41515b1af3d8674f1cd20ff512d2bd2057052eb5070f852591886f2b793e).
+4. Alice broadcast her kept withdrawal. Base rejected it: `nonce too low`.
+
+To verify it yourself, with no wallet, keys or funds: `bun install && bun run heist`. The [judge guide](JUDGE.md) explains each check.
 
 ## How it works
 
