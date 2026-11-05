@@ -33,7 +33,7 @@ export function object(value: unknown, label: string): Record<string, unknown> {
   return value;
 }
 
-export function text(value: unknown, label: string): string {
+function text(value: unknown, label: string): string {
   if (typeof value !== "string" || !value.length) throw new Error(`${label} must be a string`);
   return value;
 }
@@ -43,7 +43,7 @@ export function natural(value: unknown, label: string): number {
   return value;
 }
 
-export function address(value: unknown, label: string): Address {
+function address(value: unknown, label: string): Address {
   if (typeof value !== "string" || !isAddress(value, { strict: false })) throw new Error(`${label} must be an EVM address`);
   return value;
 }
@@ -74,7 +74,7 @@ export function retainedBytes(value: unknown): TransactionSerializedEIP1559 {
   return value;
 }
 
-export function finality(value: unknown): Finality {
+function finality(value: unknown): Finality {
   if (value !== "Latest" && value !== "Safe" && value !== "Finalized") throw new Error("unsupported finality");
   return value;
 }

@@ -5,6 +5,7 @@
 //! Sablier stream 112's creation log, whose payload hash MPC attested in spike 12.
 
 use near_sdk::json_types::U128;
+use near_sdk::mock::MockAction;
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::serde_json::{self, json, Value};
 use near_sdk::{testing_env, AccountId, NearToken, PromiseError};
@@ -44,12 +45,22 @@ fn claim_fees() -> Fees {
     fees(50_000_000, 1_000_000)
 }
 
+thread_local! {
+    static NOW_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Sets the block time, in milliseconds, for every later call in this test.
+fn clock(ms: u64) {
+    NOW_MS.set(ms);
+}
+
 fn call(who: AccountId, yocto: u128) {
     let ctx = VMContextBuilder::new()
         .current_account_id(acc("lot.testnet"))
         .predecessor_account_id(who)
         .attached_deposit(NearToken::from_yoctonear(yocto))
         .prepaid_gas(Gas::from_tgas(300))
+        .block_timestamp(NOW_MS.get() * 1_000_000)
         .build();
     testing_env!(ctx);
 }
@@ -72,6 +83,10 @@ fn new_contract(finality: Finality) -> Contract {
     Contract::new(acc("v1.signer-prod.testnet"), LOCKUP.into(), finality)
 }
 
+/// The fixture stream vests `AMOUNT * 100` linearly over these seconds: 1e18 per second.
+const STREAM_START: u64 = 1_000;
+const STREAM_END: u64 = 2_000;
+
 /// A Sablier `CreateLockupLinearStream` log with the fields a mint checks.
 fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> CreationLog {
     let word = |hex40: &str| format!("{:0>64}", hex40.trim_start_matches("0x"));
@@ -85,7 +100,7 @@ fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> Creati
         word(TOKEN),
         num(cancelable as u128),
         num(transferable as u128),
-        num(1), num(2), num(0x140), num(6),
+        num(STREAM_START as u128), num(STREAM_END as u128), num(0x140), num(6),
         format!("{:0<64}", hex::encode("linear")),
     ]
     .concat();
@@ -117,11 +132,66 @@ fn mint(c: &mut Contract, minter: AccountId, name: &str, owner: AccountId, royal
     c.on_mint_verified(id, STORAGE, verdict)
 }
 
-fn active_lot() -> Contract {
+fn minted_lot(key: &str, address: &str) -> Contract {
     let mut c = new_contract(Finality::Safe);
-    let minted = mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested());
-    assert_eq!(minted, Some(MintedLot { id: 0, address: LOT_ADDR.into() }));
+    let minted = mint(&mut c, admin(), "lot-a", alice(), 250, key, creation_log(address, false, false), attested());
+    assert_eq!(minted, Some(MintedLot { id: 0, address: address.into() }));
     c
+}
+
+fn active_lot() -> Contract {
+    minted_lot(LOT_KEY, LOT_ADDR)
+}
+
+/// Stands in for the lot's MPC-derived key, so a test can sign whatever the lot asks MPC to sign.
+fn held_key() -> secp256k1::SecretKey {
+    secp256k1::SecretKey::from_slice(&[7; 32]).unwrap()
+}
+
+/// An Active lot whose derived key is the held key.
+fn held_lot() -> Contract {
+    let pk = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &held_key()).serialize_uncompressed();
+    let key = near_sdk::PublicKey::from_parts(near_sdk::CurveType::SECP256K1, pk[1..].to_vec()).unwrap();
+    minted_lot(&String::from(&key), &format!("{:#x}", evm::Address::from_raw_public_key(&pk[1..])))
+}
+
+/// The args of the `method` call that the last contract call scheduled.
+fn scheduled(method: &str) -> Value {
+    near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).find_map(|a| match a {
+        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == method.as_bytes() => serde_json::from_slice(&args).ok(),
+        _ => None,
+    }).unwrap_or_else(|| panic!("no {method} call scheduled"))
+}
+
+/// The issued seq the last call asked MPC to sign.
+fn signing_seq() -> u32 {
+    scheduled("on_signed")["seq"].as_u64().unwrap() as u32
+}
+
+/// MPC fails the sign request the last call made, so its tx stays issued with no signature.
+fn sign_fails(c: &mut Contract) {
+    let seq = signing_seq();
+    as_contract();
+    assert_eq!(c.on_signed(0, seq, Err(PromiseError::Failed)), None);
+}
+
+/// MPC answers the sign request the last call made, signing its payload with the held key.
+/// Returns the seq it signed.
+fn held_signs(c: &mut Contract) -> u32 {
+    let seq = signing_seq();
+    let payload = hex::decode(scheduled("sign")["request"]["payload_v2"]["Ecdsa"].as_str().unwrap()).unwrap();
+    let message = secp256k1::Message::from_slice(&payload).unwrap();
+    let (v, rs) = secp256k1::Secp256k1::new().sign_ecdsa_recoverable(&message, &held_key()).serialize_compact();
+    let v = v.to_i32() as u8;
+    let response = json!({
+        "scheme": "Secp256k1",
+        "big_r": { "affine_point": format!("{:02x}{}", 2 + v, hex::encode(&rs[..32])) },
+        "s": { "scalar": hex::encode(&rs[32..]) },
+        "recovery_id": v,
+    });
+    as_contract();
+    assert!(c.on_signed(0, seq, Ok(response)).is_some(), "the signature is recorded");
+    seq
 }
 
 fn signed_transfer0() -> Contract {
@@ -240,7 +310,7 @@ fn hashes_the_creation_log_exactly_as_mpc_attested() {
     assert_eq!(hex::encode(request.expected_payload_hash.unwrap().0), "512781a3776f692f4b6123a4d48b7bb2207128df9e50c249ec6d88abe5db092f");
     let stream = source::decode(&evm_log, &LOCKUP.parse().unwrap()).unwrap();
     assert_eq!((stream.id, format!("{:#x}", stream.recipient)), (112, "0x0650899c81daacc773353a0fcd74c80b38f0fa07".into()));
-    assert_eq!(stream.deposit, 1_000 * 10u128.pow(18));
+    assert_eq!(stream.schedule.deposit.0, 1_000 * 10u128.pow(18));
 }
 
 #[test]
@@ -267,7 +337,7 @@ fn issued_is_recorded_before_the_signature_arrives() {
 }
 
 #[test]
-#[should_panic(expected = "not the lot owner")]
+#[should_panic(expected = "not the lot controller")]
 fn non_owner_cannot_request() {
     let mut c = active_lot();
     call(bob(), 1);
@@ -449,7 +519,7 @@ fn no_claims_while_clean() {
 }
 
 #[test]
-#[should_panic(expected = "not the lot owner")]
+#[should_panic(expected = "not the lot controller")]
 fn old_owner_is_locked_out_after_transfer() {
     let mut c = active_lot();
     call(alice(), 1);
@@ -459,17 +529,20 @@ fn old_owner_is_locked_out_after_transfer() {
 }
 
 #[test]
-fn anyone_can_rebump_a_sealing_burn() {
-    let mut c = signed_transfer0();
+fn anyone_can_replace_a_signed_burn_with_higher_fees() {
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    held_signs(&mut c);
     call(alice(), 1);
     let _ = c.seal(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    held_signs(&mut c);
     call(bob(), 1);
     let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
     assert_eq!(lot.issued.len(), 3);
     assert!(lot.issued.iter().all(|i| i.nonce == 0));
+    assert_eq!((signing_seq(), lot.issued[2].kind.clone(), lot.issued[2].fees), (2, Kind::Burn, fees(61_000_000, 1_210_000)));
 }
 
 #[test]
@@ -529,36 +602,121 @@ fn sealing_with_burn() -> Contract {
 #[test]
 #[should_panic(expected = "fees below the 1 Mwei floor")]
 fn zero_fees_are_rejected() {
-    let mut c = sealing_with_burn();
-    call(bob(), 1);
-    let _ = c.rebump(0, 0, fees(0, 0));
+    let mut c = signed_transfer0();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(0, 0));
+}
+
+fn bump(f: Fees) -> Fees {
+    fees(f.max_fee.0 * 11 / 10 + 1, f.max_prio.0 * 11 / 10 + 1)
+}
+
+/// Alice uses up the transfers at nonce 0, none of them signed. Returns the next valid fees.
+fn failed_transfers() -> (Contract, Fees) {
+    let mut c = held_lot();
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
+        call(alice(), 1);
+        let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
+        sign_fails(&mut c);
+        f = bump(f);
+    }
+    (c, f)
+}
+
+/// After the failed transfers, Alice seals and anyone replaces the signed burn until nonce 0 holds
+/// every burn it may.
+fn burns_used_up() -> (Contract, Fees) {
+    let (mut c, mut f) = failed_transfers();
+    call(alice(), 1);
+    let _ = c.seal(0, f);
+    held_signs(&mut c);
+    for _ in 1..evm::MAX_TRANSFERS_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.rebump(0, 0, f);
+        held_signs(&mut c);
+    }
+    (c, bump(f))
 }
 
 #[test]
-#[should_panic(expected = "too many txs issued at this nonce")]
-fn txs_per_nonce_are_bounded() {
-    let mut c = sealing_with_burn();
-    let (mut fee, mut prio) = (55_000_000u128, 1_100_000u128);
-    for seq in 2..evm::MAX_ISSUED_PER_NONCE as u32 {
-        fee = fee * 11 / 10 + 1;
-        prio = prio * 11 / 10 + 1;
-        call(bob(), 1);
-        let _ = c.rebump(0, 0, fees(fee, prio));
-        as_contract();
-        let _ = c.on_signed(0, seq, Err(PromiseError::Failed));
-    }
-    assert_eq!(c.get_lot(0).unwrap().issued.len(), evm::MAX_ISSUED_PER_NONCE);
+fn failed_transfers_never_use_up_the_seal_or_the_rescue() {
+    let (mut c, _) = burns_used_up();
     call(bob(), 1);
-    let _ = c.rebump(0, 0, fees(fee * 11 / 10 + 1, prio * 11 / 10 + 1));
+    let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
+    let lot = c.get_lot(0).unwrap();
+    let count = |nonce: u64, burn: bool| lot.issued.iter().filter(|i| i.nonce == nonce && (i.kind == Kind::Burn) == burn).count();
+    let max = evm::MAX_TRANSFERS_PER_NONCE;
+    assert_eq!(lot.state, LotState::Sealing);
+    assert_eq!((count(0, false), count(0, true), count(1, true)), (max, max, 1), "every issued entry is kept until proof");
+}
+
+#[test]
+#[should_panic(expected = "too many transfers issued at this nonce")]
+fn transfers_per_nonce_are_bounded() {
+    let (mut c, f) = failed_transfers();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
+}
+
+/// A lessee with working signing seals and unseals at minimum bumps until every signed burn sits
+/// below Base Sepolia's 5 Mwei base fee floor. A count limit on burns would then refuse the expiry
+/// seal that can mine, and the lease would never end.
+#[test]
+fn signed_burns_below_the_base_fee_cannot_strand_an_expired_lease() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.seal(0, f);
+        held_signs(&mut c);
+        call(bob(), 0);
+        c.unseal(0);
+    }
+    let lot = c.get_lot(0).unwrap();
+    let burns: Vec<_> = lot.issued.iter().filter(|i| i.kind == Kind::Burn).collect();
+    assert_eq!(burns.len(), evm::MAX_TRANSFERS_PER_NONCE);
+    assert!(burns.iter().all(|i| i.tx_hash.is_some() && i.fees.max_fee.0 < 5_000_000), "every burn is signed and below the base fee");
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, fees(50_000_000, 10_000_000));
+    let burn = held_signs(&mut c);
+    assert!(prove_ok(&mut c, burn));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(*Contract::controller(&lot), alice());
+    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+}
+
+/// The fee floor, the 10% bump and the hard caps bound burns at one nonce without a count limit.
+#[test]
+fn burns_per_nonce_are_bounded_by_the_fee_caps() {
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    let mut prior = Vec::new();
+    while evm::check_fees(&prior, 0, &f, &Kind::Burn).is_ok() {
+        prior.push(Issued { seq: prior.len() as u32, nonce: 0, kind: Kind::Burn, gas_limit: evm::BURN_GAS_LIMIT, fees: f, tx_hash: None, raw_tx: None });
+        f = fees((f.max_fee.0 * 11).div_ceil(10), (f.max_prio.0 * 11).div_ceil(10));
+    }
+    assert_eq!(evm::check_fees(&prior, 0, &f, &Kind::Burn), Err("fee above cap"));
+    assert!((50..=100).contains(&prior.len()), "{} burns fit under the caps", prior.len());
 }
 
 #[test]
 fn burn_at_the_stuck_nonce_stays_repriceable_after_a_rescue() {
-    let mut c = sealing_with_burn();
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    sign_fails(&mut c);
+    call(alice(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    held_signs(&mut c);
     call(bob(), 1);
     let _ = c.rescue(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 2, Err(PromiseError::Failed));
+    sign_fails(&mut c);
     call(bob(), 1);
     let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
@@ -650,7 +808,7 @@ fn unseal_cancels_the_listing() {
 }
 
 #[test]
-#[should_panic(expected = "the owner can't buy their own lot")]
+#[should_panic(expected = "the seller can't buy their own listing")]
 fn owner_cannot_buy() {
     let mut c = listed_lot();
     call(alice(), PRICE);
@@ -744,7 +902,16 @@ fn zero_amount_transfers_are_rejected() {
 fn mint_binds_the_token_and_stream_from_the_proven_log() {
     let c = active_lot();
     let lot = c.get_lot(0).unwrap();
-    let source = Source { kind: "sablier-lockup-v4".into(), contract: LOCKUP.to_lowercase(), id: U128(7) };
+    let schedule = Schedule {
+        deposit: U128(AMOUNT * 100),
+        start: STREAM_START,
+        cliff: 0,
+        end: STREAM_END,
+        granularity: 1,
+        start_unlock: U128(0),
+        cliff_unlock: U128(0),
+    };
+    let source = Source { kind: "sablier-lockup-v4".into(), contract: LOCKUP.to_lowercase(), id: U128(7), schedule };
     assert_eq!((lot.token, lot.source, lot.minter), (TOKEN.to_lowercase(), source, admin()));
 }
 
@@ -776,6 +943,29 @@ fn the_minter_pays_for_storage() {
     let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
 }
 
+/// Runs the real mint chain in one context, so storage usage accumulates across the callbacks.
+#[test]
+fn the_minter_pays_for_the_lots_persisted_storage() {
+    let mut c = new_contract(Finality::Safe);
+    call(acc("lot.testnet"), ONE_NEAR);
+    let before = env::storage_usage();
+    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
+    let actions: Vec<MockAction> = near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).collect();
+    let refund = actions.iter().find_map(|a| match a { MockAction::Transfer { deposit, .. } => Some(*deposit), _ => None }).unwrap();
+    let args: Value = actions.iter().find_map(|a| match a {
+        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == b"on_derived" => serde_json::from_slice(args).ok(),
+        _ => None,
+    }).unwrap();
+    let storage: NearToken = serde_json::from_value(args["storage"].clone()).unwrap();
+    assert_eq!(refund.saturating_add(storage).saturating_add(mpc::REQUEST_DEPOSIT).as_yoctonear(), ONE_NEAR, "the minter keeps paying only storage and the MPC deposit");
+
+    let log: CreationLog = serde_json::from_value(args["log"].clone()).unwrap();
+    let _ = c.on_derived(0, args["recipient"].as_str().unwrap().into(), log, storage, Ok(LOT_KEY.into()));
+    assert!(c.on_mint_verified(0, storage, attested()).is_some());
+    c.lots.flush();
+    assert_eq!(storage, env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128));
+}
+
 #[test]
 #[should_panic(expected = "name must be 1-64 chars")]
 fn names_are_bounded() {
@@ -795,6 +985,8 @@ fn a_lot_awaiting_mpc_is_not_an_nft_yet() {
     assert_eq!(c.get_lot(0).unwrap().state, LotState::Minting);
     assert!(c.nft_token("0".into()).is_none());
     assert_eq!((c.nft_total_supply().0, c.nft_tokens(None, None).len()), (0, 0));
+    let payout = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.nft_payout("0".into(), U128(PRICE), None)));
+    assert!(payout.is_err(), "and has no payout");
 }
 
 #[test]
@@ -805,4 +997,598 @@ fn tokens_carry_an_on_chain_title_card() {
     let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
     let svg = String::from_utf8(svg).unwrap();
     assert!(svg.contains("Quitclaim lot #0") && svg.contains(LOT_ADDR) && svg.contains("Sablier stream 7"));
+}
+
+fn carol() -> AccountId {
+    acc("carol.testnet")
+}
+
+const TOKEN_UNIT: u128 = 10u128.pow(18);
+/// Bob takes the lease 100 s into the stream; it runs 600 s.
+const TAKEN: u64 = 1_100_000;
+const ENDS: u64 = 1_700_000;
+
+fn offer(c: &mut Contract) {
+    call(alice(), 0);
+    c.offer_lease(0, U128(PRICE), ENDS);
+}
+
+fn take(c: &mut Contract) {
+    clock(TAKEN);
+    call(bob(), PRICE);
+    c.take_lease(0, 1, ENDS);
+}
+
+fn offered() -> Contract {
+    let mut c = clean_lot();
+    offer(&mut c);
+    c
+}
+
+fn leased() -> Contract {
+    let mut c = offered();
+    take(&mut c);
+    c
+}
+
+/// Bob leases a lot whose key the test holds.
+fn held_lease() -> Contract {
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(1, 1));
+    offer(&mut c);
+    take(&mut c);
+    c
+}
+
+/// Bob requests a transfer at the next nonce; signing fails, so it stays issued and unsigned.
+fn lessee_requests(c: &mut Contract, amount: u128, fees: Fees) {
+    call(bob(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(amount), 150_000, fees);
+    sign_fails(c);
+}
+
+/// Bob signs the fixture transfer at nonce 0, seals, and the transfer is proven: Clean, lease still live.
+fn lessee_withdrew_and_sealed() -> Contract {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    call(bob(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    as_contract();
+    assert_eq!(c.on_signed(0, 0, mpc_sig()).as_deref(), Some(CLAIM0_RAW));
+    call(bob(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    as_contract();
+    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    assert!(prove_ok(&mut c, 0));
+    c
+}
+
+fn lessee_sealed_clean() -> Contract {
+    let mut c = leased();
+    call(bob(), 1);
+    let _ = c.seal(0, fees(1, 1));
+    assert_eq!(c.get_lot(0).unwrap().state, LotState::Clean);
+    c
+}
+
+fn committed(c: &Contract) -> u128 {
+    c.lease_budget(0).committed.0
+}
+
+fn token_ids(tokens: Vec<near_contract_standards::non_fungible_token::Token>) -> Vec<String> {
+    tokens.into_iter().map(|t| t.token_id).collect()
+}
+
+fn burned_lease_token() -> bool {
+    near_sdk::test_utils::get_logs().iter().any(|l| l.contains(r#""event":"nft_burn""#) && l.contains(r#""0-lease""#))
+}
+
+#[test]
+fn taking_a_lease_pays_owner_and_minter_and_hands_over_control() {
+    let c = leased();
+    let lot = c.get_lot(0).unwrap();
+    let lease = lot.lease.clone().unwrap();
+    assert_eq!((lot.state, lot.version, lot.lease_offer), (LotState::Active, 2, None));
+    assert_eq!((lease.holder, lease.start_ms, lease.ends_at_ms, lease.committed.0), (bob(), TAKEN, ENDS, 0));
+    assert_eq!((c.proceeds_of(alice()).0, c.proceeds_of(admin()).0), (975_000, 25_000));
+    assert_eq!(c.nft_token("0-lease".into()).unwrap().owner_id, bob());
+    assert_eq!(c.nft_token("0".into()).unwrap().owner_id, alice());
+}
+
+#[test]
+fn the_budget_grows_with_the_stream_and_a_nonce_is_charged_its_largest_transfer() {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    call(bob(), 0);
+    assert_eq!(c.lease_budget(0).allowed.0, 30 * TOKEN_UNIT);
+    lessee_requests(&mut c, 10 * TOKEN_UNIT, claim_fees());
+    assert_eq!(committed(&c), 10 * TOKEN_UNIT);
+    lessee_requests(&mut c, 25 * TOKEN_UNIT, fees(55_000_000, 1_100_000));
+    assert_eq!(committed(&c), 25 * TOKEN_UNIT, "a larger replacement costs only the difference");
+    lessee_requests(&mut c, 5 * TOKEN_UNIT, fees(60_500_000, 1_210_000));
+    assert_eq!(committed(&c), 25 * TOKEN_UNIT, "a smaller replacement costs nothing");
+    clock(TAKEN + 60_000);
+    call(bob(), 0);
+    assert_eq!(c.lease_budget(0).allowed.0, 60 * TOKEN_UNIT);
+}
+
+#[test]
+#[should_panic(expected = "over the lease budget")]
+fn a_transfer_over_the_budget_is_refused() {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    lessee_requests(&mut c, 25 * TOKEN_UNIT, claim_fees());
+    lessee_requests(&mut c, 31 * TOKEN_UNIT, fees(55_000_000, 1_100_000));
+}
+
+#[test]
+fn the_budget_stops_at_the_lease_end() {
+    let c = leased();
+    clock(ENDS + 100_000);
+    call(bob(), 0);
+    assert_eq!(c.lease_budget(0).allowed.0, 600 * TOKEN_UNIT);
+}
+
+#[test]
+#[should_panic(expected = "the lease has run out")]
+fn the_lessee_cannot_transfer_after_the_lease_runs_out() {
+    let mut c = leased();
+    clock(ENDS);
+    lessee_requests(&mut c, 1, claim_fees());
+}
+
+#[test]
+#[should_panic(expected = "not the lot controller")]
+fn the_owner_cannot_request_during_a_lease() {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(1), 150_000, claim_fees());
+}
+
+#[test]
+#[should_panic(expected = "not the lot controller")]
+fn the_owner_cannot_seal_during_a_lease() {
+    let mut c = leased();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(1, 1));
+}
+
+#[test]
+#[should_panic(expected = "not the lot controller")]
+fn the_owner_cannot_unseal_during_a_lease() {
+    let mut c = lessee_sealed_clean();
+    call(alice(), 0);
+    c.unseal(0);
+}
+
+#[test]
+#[should_panic(expected = "not the lot controller")]
+fn the_owner_cannot_list_during_a_lease() {
+    let mut c = lessee_sealed_clean();
+    call(alice(), 0);
+    c.list(0, U128(PRICE));
+}
+
+#[test]
+#[should_panic(expected = "the title can't move during a lease")]
+fn the_title_cannot_move_during_a_lease() {
+    let mut c = lessee_sealed_clean();
+    call(alice(), 1);
+    c.nft_transfer(carol(), "0".into(), None, None);
+}
+
+#[test]
+#[should_panic(expected = "lot is already leased")]
+fn a_leased_lot_cannot_be_offered_again() {
+    let mut c = lessee_sealed_clean();
+    call(alice(), 0);
+    c.offer_lease(0, U128(PRICE), ENDS + 1);
+}
+
+#[test]
+fn anyone_seals_a_run_out_lease_and_control_returns_to_the_owner() {
+    let mut c = leased();
+    clock(ENDS);
+    call(carol(), 1);
+    assert!(matches!(c.seal(0, fees(1, 1)), PromiseOrValue::Value(LotState::Clean)));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.state, lot.lease), (LotState::Clean, None));
+    assert!(c.nft_token("0-lease".into()).is_none());
+    call(alice(), 0);
+    c.unseal(0);
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(1), 150_000, claim_fees());
+}
+
+#[test]
+fn expiry_burns_and_proves_the_lessees_signature_before_control_returns() {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    call(bob(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    as_contract();
+    assert_eq!(c.on_signed(0, 0, mpc_sig()).as_deref(), Some(CLAIM0_RAW), "bob keeps a signed transfer");
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    as_contract();
+    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    assert!(c.nft_token("0-lease".into()).is_some(), "the lease holds until its signatures are proven consumed");
+    assert!(prove_ok(&mut c, 0));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(*Contract::controller(&lot), alice());
+    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+}
+
+/// A lessee who seals and unseals while MPC fails must not fill nonce 0 with unsigned burns, or
+/// the expiry seal is refused and the lease never ends.
+#[test]
+fn failed_signing_cannot_strand_an_expired_lease() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.seal(0, f);
+        sign_fails(&mut c);
+        call(bob(), 0);
+        c.unseal(0);
+    }
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.issued.len(), lot.issued[1].kind.clone()), (2, Kind::Burn), "each seal signs the same burn again");
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, bump(f));
+    let burn = held_signs(&mut c);
+    assert_eq!(burn, lot.issued[1].seq);
+    assert!(prove_ok(&mut c, burn));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(*Contract::controller(&lot), alice());
+    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+}
+
+/// Rebumps while MPC fails must not use up the burns at the stuck nonce, or a rescue at the next
+/// nonce could never mine.
+#[test]
+fn rebumps_under_failed_signing_re_sign_the_burn_in_place() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    clock(ENDS);
+    f = bump(f);
+    call(carol(), 1);
+    let _ = c.seal(0, f);
+    sign_fails(&mut c);
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
+        f = bump(f);
+        call(carol(), 1);
+        let _ = c.rebump(0, 0, f);
+        sign_fails(&mut c);
+    }
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.state, lot.issued.len()), (LotState::Sealing, 2), "the issued list never grows");
+
+    call(carol(), 1);
+    let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
+    let rescue = held_signs(&mut c);
+    call(carol(), 1);
+    let _ = c.rebump(0, 0, f);
+    assert_eq!(held_signs(&mut c), lot.issued[1].seq, "the stuck nonce's burn is still signable after the rescue");
+    assert!(c.get_lot(0).unwrap().issued.iter().filter(|i| i.kind == Kind::Burn).all(|i| i.tx_hash.is_some()));
+    assert!(prove_ok(&mut c, rescue));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.state, lot.lease, lot.next_nonce, lot.issued.len()), (LotState::Clean, None, 2, 0));
+}
+
+#[test]
+#[should_panic(expected = "the lease has run out")]
+fn the_lessee_cannot_unseal_after_the_lease_runs_out() {
+    let mut c = leased();
+    clock(TAKEN + 30_000);
+    lessee_requests(&mut c, TOKEN_UNIT, claim_fees());
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    call(bob(), 0);
+    c.unseal(0);
+}
+
+#[test]
+fn surrender_at_clean_returns_control() {
+    let mut c = lessee_sealed_clean();
+    call(bob(), 0);
+    c.surrender_lease(0);
+    assert!(burned_lease_token());
+    call(alice(), 0);
+    c.list(0, U128(PRICE));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease, lot.listing.unwrap().item), (None, Item::Title));
+}
+
+#[test]
+#[should_panic(expected = "lot is not Clean")]
+fn surrender_needs_clean() {
+    let mut c = leased();
+    call(bob(), 0);
+    c.surrender_lease(0);
+}
+
+#[test]
+#[should_panic(expected = "not the lease holder")]
+fn only_the_lease_holder_surrenders() {
+    let mut c = lessee_sealed_clean();
+    call(carol(), 0);
+    c.surrender_lease(0);
+}
+
+#[test]
+fn a_lease_that_runs_out_at_clean_ends_on_the_next_call() {
+    let mut c = lessee_sealed_clean();
+    clock(ENDS);
+    call(alice(), 0);
+    assert!(c.get_lot(0).unwrap().lease.is_some(), "nothing has closed it yet");
+    assert!(c.nft_token("0-lease".into()).is_none());
+    assert_eq!((c.nft_supply_for_owner(bob()).0, c.nft_total_supply().0), (0, 1));
+    c.list(0, U128(PRICE));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease, lot.listing.unwrap().item), (None, Item::Title));
+}
+
+/// Payout must not name the former holder of a lease the NFT views no longer show.
+#[test]
+#[should_panic(expected = "no such token")]
+fn a_run_out_lease_has_no_payout() {
+    let c = lessee_sealed_clean();
+    clock(ENDS);
+    call(carol(), 0);
+    assert!(c.nft_token("0-lease".into()).is_none());
+    let _ = c.nft_payout("0-lease".into(), U128(PRICE), None);
+}
+
+#[test]
+fn anyone_ends_a_lease_that_ran_out_at_clean() {
+    let mut c = lessee_sealed_clean();
+    let version = c.get_lot(0).unwrap().version;
+    clock(ENDS);
+    call(carol(), 0);
+    c.end_lease(0);
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease, lot.version), (None, version + 1));
+}
+
+#[test]
+#[should_panic(expected = "no lease has run out on a Clean lot")]
+fn end_lease_refuses_a_live_lease() {
+    let mut c = lessee_sealed_clean();
+    call(carol(), 0);
+    c.end_lease(0);
+}
+
+#[test]
+#[should_panic(expected = "lease offer is stale")]
+fn a_lease_offer_is_bound_to_the_version_the_taker_saw() {
+    let mut c = offered();
+    call(bob(), PRICE);
+    c.take_lease(0, 0, ENDS);
+}
+
+/// Replacing an offer keeps the version, so only the end time stops a take of the quoted term
+/// from buying a shorter one.
+#[test]
+#[should_panic(expected = "the lease offer ends at a different time")]
+fn a_lease_is_taken_only_on_the_term_the_lessee_accepted() {
+    let mut c = offered();
+    let quoted = c.get_lot(0).unwrap().lease_offer.unwrap();
+    clock(TAKEN);
+    call(alice(), 0);
+    c.offer_lease(0, quoted.price, TAKEN + 1_000);
+    assert_eq!(c.get_lot(0).unwrap().lease_offer.unwrap().version, quoted.version);
+    call(bob(), PRICE);
+    c.take_lease(0, quoted.version, quoted.ends_at_ms);
+}
+
+#[test]
+#[should_panic(expected = "no lease offer")]
+fn unseal_cancels_the_lease_offer() {
+    let mut c = offered();
+    call(alice(), 0);
+    c.unseal(0);
+    call(bob(), PRICE);
+    c.take_lease(0, 2, ENDS);
+}
+
+#[test]
+#[should_panic(expected = "the lease offer has run out")]
+fn a_run_out_offer_cannot_be_taken() {
+    let mut c = offered();
+    clock(ENDS);
+    call(bob(), PRICE);
+    c.take_lease(0, 1, ENDS);
+}
+
+#[test]
+#[should_panic(expected = "the owner can't lease their own lot")]
+fn the_owner_cannot_take_their_own_lease() {
+    let mut c = offered();
+    call(alice(), PRICE);
+    c.take_lease(0, 1, ENDS);
+}
+
+#[test]
+fn a_listing_and_a_lease_offer_replace_each_other() {
+    let mut c = offered();
+    call(alice(), 0);
+    c.list(0, U128(PRICE));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease_offer, lot.listing.map(|l| l.item)), (None, Some(Item::Title)));
+    c.offer_lease(0, U128(PRICE), ENDS);
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease_offer.is_some(), lot.listing), (true, None));
+    c.delist(0);
+    assert_eq!(c.get_lot(0).unwrap().lease_offer, None);
+}
+
+#[test]
+fn lease_resale_pays_the_lessee_and_minter_and_carries_the_budget() {
+    let mut c = lessee_withdrew_and_sealed();
+    assert_eq!(c.get_lot(0).unwrap().state, LotState::Clean);
+    call(bob(), 0);
+    c.list(0, U128(PRICE));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(lot.listing.as_ref().unwrap().item, Item::Lease);
+    let payout = c.nft_payout("0-lease".into(), U128(PRICE), None).payout;
+    assert_eq!((payout.get(&bob()).map(|v| v.0), payout.get(&admin()).map(|v| v.0)), (Some(975_000), Some(25_000)));
+    call(carol(), PRICE);
+    c.buy(0, lot.version);
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.owner, lot.lease.as_ref().unwrap().holder.clone(), lot.state), (alice(), carol(), LotState::Active));
+    assert_eq!((c.proceeds_of(bob()).0, c.proceeds_of(admin()).0), (975_000, 50_000), "the minter earns on the take and the resale");
+    assert_eq!(committed(&c), AMOUNT, "the budget carries over");
+}
+
+#[test]
+fn the_lease_token_moves_by_nft_transfer_from_clean() {
+    let mut c = lessee_sealed_clean();
+    let version = c.get_lot(0).unwrap().version;
+    call(bob(), 1);
+    c.nft_transfer(carol(), "0-lease".into(), None, None);
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.lease.unwrap().holder, lot.state, lot.version), (carol(), LotState::Active, version + 1));
+    assert!(near_sdk::test_utils::get_logs().iter().any(|l| l.contains(r#""event":"nft_transfer""#) && l.contains(r#""0-lease""#)));
+}
+
+#[test]
+#[should_panic(expected = "lot is not Clean")]
+fn the_lease_moves_only_from_clean() {
+    let mut c = leased();
+    call(bob(), 1);
+    c.nft_transfer(carol(), "0-lease".into(), None, None);
+}
+
+#[test]
+#[should_panic(expected = "not the token holder")]
+fn only_the_lease_holder_moves_the_lease() {
+    let mut c = lessee_sealed_clean();
+    call(carol(), 1);
+    c.nft_transfer(carol(), "0-lease".into(), None, None);
+}
+
+#[test]
+fn nft_views_include_live_lease_tokens() {
+    let c = leased();
+    clock(TAKEN + 30_000);
+    call(bob(), 0);
+    assert_eq!(c.nft_total_supply().0, 2);
+    assert_eq!(token_ids(c.nft_tokens(None, None)), ["0", "0-lease"]);
+    assert_eq!(token_ids(c.nft_tokens(Some(U128(1)), Some(1))), ["0-lease"]);
+    assert_eq!((c.nft_supply_for_owner(bob()).0, c.nft_supply_for_owner(alice()).0), (1, 1));
+    assert_eq!(token_ids(c.nft_tokens_for_owner(bob(), None, None)), ["0-lease"]);
+    let media = c.nft_token("0-lease".into()).unwrap().metadata.unwrap().media.unwrap();
+    let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
+    let svg = String::from_utf8(svg).unwrap();
+    assert!(svg.contains("Leasehold on lot #0") && svg.contains("Until 1970-01-01 00:28 UTC") && svg.contains("Budget left 30000000000000000000"), "{svg}");
+}
+
+#[test]
+fn a_page_may_start_at_the_end_of_titles_and_leases() {
+    let c = leased();
+    call(bob(), 0);
+    assert!(c.nft_tokens(Some(U128(2)), None).is_empty());
+    assert!(c.nft_tokens_for_owner(bob(), Some(U128(1)), None).is_empty());
+}
+
+#[test]
+#[should_panic(expected = "Out of bounds, please use a smaller from_index.")]
+fn an_offset_past_u32_is_out_of_bounds_not_the_first_page() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens(Some(U128(1 << 32)), None);
+}
+
+#[test]
+#[should_panic(expected = "Out of bounds, please use a smaller from_index.")]
+fn an_owner_offset_past_their_tokens_is_out_of_bounds() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens_for_owner(bob(), Some(U128(2)), None);
+}
+
+/// Settling closes leases, which shrinks the enumeration under the next page's offset, so the
+/// keeper lists every title before it settles any.
+#[test]
+fn titles_listed_before_settling_cover_every_run_out_lease() {
+    let mut c = leased();
+    let lot = c.get_lot(0).unwrap();
+    for id in 1..51 {
+        c.lots.insert(id, lot.clone());
+    }
+    clock(ENDS);
+    call(carol(), 1);
+    let mut tokens = c.nft_tokens(Some(U128(0)), Some(100));
+    tokens.extend(c.nft_tokens(Some(U128(100)), Some(100)));
+    let titles: Vec<LotId> = tokens.iter().filter_map(|t| t.token_id.parse().ok()).collect();
+    assert_eq!(titles, (0..51).collect::<Vec<_>>());
+    for id in titles {
+        call(carol(), 1);
+        let _ = c.seal(id, fees(evm::MIN_FEE, evm::MIN_FEE));
+    }
+    assert_eq!(c.nft_total_supply().0, 51, "fewer tokens than the second page's offset");
+    assert!((0..51).all(|id| c.get_lot(id).unwrap().lease.is_none()));
+}
+
+#[test]
+#[should_panic(expected = "Cannot provide limit of 0.")]
+fn a_zero_limit_is_refused() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens(None, Some(0));
+}
+
+/// `streamedAmountOf` read from Sablier Lockup v4 on Base Sepolia at a block with that timestamp.
+/// Stream 112's schedule comes from its real creation log; the others from Sablier's getters.
+#[test]
+fn vested_matches_sablier_on_the_real_creation_log() {
+    let log: CreationLog = serde_json::from_str(REAL_CREATION_LOG).unwrap();
+    let schedule = source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap()).unwrap().schedule;
+    for (t, streamed) in [
+        (1793880382, 166_666_666_666_666_666_666),
+        (1793881582, 500_000_000_000_000_000_000),
+        (1793883381, 999_722_222_222_222_222_222),
+        (1793883500, 1_000_000_000_000_000_000_000),
+    ] {
+        assert_eq!(schedule.vested(t), streamed, "stream 112 at {t}");
+    }
+}
+
+#[test]
+fn vested_matches_sablier_across_cliffs_unlocks_and_granularity() {
+    let schedule = |deposit: u128, start, cliff, end, granularity, start_unlock: u128| Schedule {
+        deposit: U128(deposit),
+        start,
+        cliff,
+        end,
+        granularity,
+        start_unlock: U128(start_unlock),
+        cliff_unlock: U128(0),
+    };
+    let cases = [
+        ("76: cliff ahead, start unlock", schedule(1_000 * TOKEN_UNIT, 1790208000, 1805846400, 1821744000, 1, 100 * TOKEN_UNIT), 1793911308, 100 * TOKEN_UNIT),
+        ("99: no cliff, start unlock", schedule(20_000 * TOKEN_UNIT, 1791169008, 0, 1822705008, 1, 2_000 * TOKEN_UNIT), 1793911332, 3_565_253_424_657_534_246_575),
+        ("53: past the cliff", schedule(200_000_000_000_000, 1784100080, 1786692080, 1815636080, 1, 0), 1793911344, 49_884_355_997_788),
+        ("45: ended, daily granularity", schedule(5_000 * TOKEN_UNIT, 1779539575, 0, 1782522000, 86_400, 0), 1793911345, 5_000 * TOKEN_UNIT),
+    ];
+    for (name, s, t, streamed) in cases {
+        assert_eq!(s.vested(t), streamed, "stream {name}");
+    }
+    let daily = schedule(1_000, 0, 0, 864_000, 86_400, 0);
+    assert_eq!((daily.vested(86_399), daily.vested(3 * 86_400 + 5_000)), (0, 300), "whole granularity units only");
 }

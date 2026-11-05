@@ -4,6 +4,7 @@
  * a minter royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
  * to Carol: three owners, one address.
  */
+import { nearToYocto } from "near-api-js";
 import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
 import { provenMined, settle } from "../keeper.ts";
@@ -14,7 +15,7 @@ import { alice, aliceEvm, bob, bobEvm, carol, contract, minter, keeper, lotOf, r
 import { firstLine, settleLinks, type Run } from "./report.ts";
 import { retainedBytes } from "../heist-evidence.ts";
 
-const PRICE = 10n ** 23n;
+const PRICE = nearToYocto("0.1");
 const ROYALTY_BPS = 250;
 
 export async function handover(run: Run) {
@@ -90,7 +91,7 @@ export async function handover(run: Run) {
     ws.ok && ws.value === true && wi.ok && wi.value === true && (await view(contract, "proceeds_of", { account_id: alice })) === "0", [ws.url, wi.url]);
 
   const locked = await requestTransfer(contract, alice, id, aliceEvm, { amount: 1n, gasLimit: 80_000 });
-  run.record("alice requests after the sale", "refused: not the lot owner", locked.ok ? "signed!" : locked.error, !locked.ok && locked.error.includes("not the lot owner"), [locked.url]);
+  run.record("alice requests after the sale", "refused: not the lot controller", locked.ok ? "signed!" : locked.error, !locked.ok && locked.error.includes("not the lot controller"), [locked.url]);
 
   const aliceBefore = await base.tokenBalance(p.token, aliceEvm);
   const wb = await withdrawTo(bob, id, bobEvm);

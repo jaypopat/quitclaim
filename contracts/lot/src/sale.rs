@@ -1,5 +1,6 @@
 //! Fixed-price sale with a minter royalty and pulled payouts. `buy` is one synchronous call: it
-//! moves the title and credits proceeds in contract state, so title and credit can't diverge.
+//! moves the listed token (the title, or the lease while one exists) and credits proceeds in
+//! contract state, so token and credit can't diverge.
 
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ use near_contract_standards::non_fungible_token::TokenId;
 use near_sdk::json_types::U128;
 use near_sdk::{env, log, near, require, AccountId, Gas, NearToken, Promise, PromiseError};
 
-use crate::{Contract, ContractExt, Listing, LotId, LotState, Payout};
+use crate::{nft, Contract, ContractExt, Item, Listing, LotId, LotState, Payout};
 
 pub const MAX_ROYALTY_BPS: u16 = 1_000;
 const WITHDRAW_CALLBACK_GAS: Gas = Gas::from_tgas(10);
@@ -19,7 +20,7 @@ pub fn split(price: u128, royalty_bps: u16) -> (u128, u128) {
 }
 
 impl Contract {
-    fn credit(&mut self, account: &AccountId, amount: u128) {
+    pub(crate) fn credit(&mut self, account: &AccountId, amount: u128) {
         if amount == 0 {
             return;
         }
@@ -30,36 +31,40 @@ impl Contract {
 
 #[near]
 impl Contract {
-    /// Owner lists a Clean lot. Nothing can sign while Clean, so the position can't change under the offer.
+    /// The controller lists a Clean lot: the lease while one exists, else the title. Nothing can
+    /// sign while Clean, so the position can't change under the offer.
     pub fn list(&mut self, id: LotId, price: U128) {
-        let mut lot = self.lot(id);
-        Self::require_owner(&lot);
+        let lot = self.load_mut(id);
+        Self::require_controller(lot);
         require!(lot.state == LotState::Clean, "lot is not Clean");
         require!(price.0 > 0, "price must be positive");
-        lot.listing = Some(Listing { price, version: lot.version });
-        self.lots.insert(id, lot);
+        let item = if lot.lease.is_some() { Item::Lease } else { Item::Title };
+        lot.listing = Some(Listing { item, price, version: lot.version });
+        lot.lease_offer = None;
     }
 
+    /// Withdraws the listing and any lease offer.
     pub fn delist(&mut self, id: LotId) {
-        let mut lot = self.lot(id);
-        Self::require_owner(&lot);
+        let lot = self.load_mut(id);
+        Self::require_controller(lot);
         lot.listing = None;
-        self.lots.insert(id, lot);
+        lot.lease_offer = None;
     }
 
     /// `version` is the lot version the buyer saw, so a relisted or unsealed lot can't be bought by surprise.
     #[payable]
     pub fn buy(&mut self, id: LotId, version: u32) {
-        let lot = self.lot(id);
+        let lot = self.load(id);
         let listing = lot.listing.clone().unwrap_or_else(|| env::panic_str("lot is not listed"));
         require!(listing.version == lot.version && version == lot.version, "listing is stale");
         require!(env::attached_deposit().as_yoctonear() == listing.price.0, "attach exactly the listing price");
         let buyer = env::predecessor_account_id();
-        require!(buyer != lot.owner, "the owner can't buy their own lot");
+        let seller = Self::holder(&lot, listing.item).clone();
+        require!(buyer != seller, "the seller can't buy their own listing");
 
         let (seller_share, royalty) = split(listing.price.0, lot.royalty_bps);
-        let (seller, minter) = (lot.owner.clone(), lot.minter.clone());
-        self.move_title(id, lot, buyer, Some("quitclaim sale"));
+        let minter = lot.minter.clone();
+        self.move_title(id, lot, listing.item, buyer, Some("quitclaim sale"));
         self.credit(&seller, seller_share);
         self.credit(&minter, royalty);
     }
@@ -88,13 +93,13 @@ impl Contract {
         U128(self.proceeds.get(&account_id).copied().unwrap_or(0))
     }
 
-    /// NEP-199, view only: exactly what `buy` would credit for `balance`.
+    /// NEP-199, view only: exactly what `buy` would credit for `balance`, for a token `nft_token` shows.
     pub fn nft_payout(&self, token_id: TokenId, balance: U128, max_len_payout: Option<u32>) -> Payout {
-        let id: LotId = token_id.parse().unwrap_or_else(|_| env::panic_str("token_id must be a lot id"));
-        let lot = self.lot(id);
+        let (id, item) = nft::parse_token(&token_id);
+        let (lot, holder) = self.live_token(id, item).unwrap_or_else(|| env::panic_str("no such token"));
         let (seller_share, royalty) = split(balance.0, lot.royalty_bps);
         let mut payout: HashMap<AccountId, U128> = HashMap::new();
-        for (account, amount) in [(lot.owner, seller_share), (lot.minter, royalty)] {
+        for (account, amount) in [(holder.clone(), seller_share), (lot.minter.clone(), royalty)] {
             if amount > 0 {
                 payout.entry(account).or_insert(U128(0)).0 += amount;
             }

@@ -2958,6 +2958,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
+ "chrono",
  "hex",
  "near-contract-standards",
  "near-mpc-contract-interface",
@@ -2965,6 +2966,7 @@ dependencies = [
  "near-sdk",
  "omni-transaction",
  "schemars 0.8.22",
+ "secp256k1",
  "serde_json",
 ]
 

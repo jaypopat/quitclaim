@@ -22,6 +22,8 @@ type AbiFunction = {
 const abi = await Bun.file(`${root}target/near/quitclaim_lot/quitclaim_lot_abi.json`).json();
 const functions: AbiFunction[] = abi.body.functions;
 const definitions: Record<string, JSONSchema> = { ...abi.body.root_schema.definitions };
+/** near-sdk's schema says `array<u8>`, but it serializes `Base64VecU8` as a base64 string. */
+definitions.Base64VecU8 = { type: "string" };
 
 /** A call that returns a Promise resolves to its callback's return value, which the ABI can't express. */
 const resolvesVia: Record<string, string> = {

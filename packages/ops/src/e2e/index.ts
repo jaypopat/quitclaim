@@ -3,24 +3,23 @@
  * step the security model promises, and writes `reports/e2e-<scenario>-<time>.md`.
  *
  *   bun run e2e                 all scenarios
- *   bun run e2e handover        one scenario (minting, handover, recovery)
+ *   bun run e2e handover        one scenario (minting, handover, recovery, lease)
  */
 import { contract } from "./context.ts";
+import { scenarioNames, type ScenarioName } from "./names.ts";
 import { Run } from "./report.ts";
 import { scenarios } from "./scenarios.ts";
 
-type Name = keyof typeof scenarios;
-
-const requested = Bun.argv.slice(2) as Name[];
-const unknown = requested.filter((n) => !(n in scenarios));
+const requested = Bun.argv.slice(2) as ScenarioName[];
+const unknown = requested.filter((n) => !scenarioNames.includes(n));
 if (unknown.length) {
-  console.error(`unknown scenario: ${unknown.join(", ")}. Known: ${Object.keys(scenarios).join(", ")}`);
+  console.error(`unknown scenario: ${unknown.join(", ")}. Known: ${scenarioNames.join(", ")}`);
   process.exit(1);
 }
 
 let allPass = true;
-for (const name of requested.length ? requested : (Object.keys(scenarios) as Name[])) {
-  const run = new Run(name, contract);
+for (const name of requested.length ? requested : scenarioNames) {
+  const run = await Run.start(name, contract);
   let error: unknown;
   try {
     await scenarios[name](run);

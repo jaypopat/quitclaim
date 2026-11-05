@@ -4,8 +4,11 @@ import {
   type TransactionSerializedEIP1559,
 } from "viem";
 import { baseSepolia } from "viem/chains";
-import { config, fetchLotAddress, nearProvider, nearView, type Finality } from "@quitclaim/shared";
-import { address, finality, natural, object, parseEvidence, text, type HeistEvidence, type NearRef } from "./heist-evidence.ts";
+import { JsonRpcProvider } from "near-api-js";
+import { config, fetchLotAddress, type Finality } from "@quitclaim/shared";
+import { txUrl as baseTxUrl } from "./base.ts";
+import { natural, object, parseEvidence, type HeistEvidence, type NearRef } from "./heist-evidence.ts";
+import { codeHash, fullAccessKeys, nearTxUrl, view } from "./near.ts";
 
 type Transfer = { from: Address; to: Address; amount: bigint };
 type Mined = {
@@ -32,9 +35,9 @@ export type HeistIO = {
 };
 
 const same = (a: string | null, b: string) => a?.toLowerCase() === b.toLowerCase();
-const nearUrl = (hash: string) => `https://testnet.nearblocks.io/txns/${hash}`;
-const baseUrl = (hash: Hex) => `${config.evm.explorer}/tx/${hash}`;
-const requireFact = (condition: boolean, message: string) => { if (!condition) throw new Error(message); };
+function requireFact(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
 const errorMessage = (e: unknown) => e instanceof BaseError ? e.details || e.shortMessage : e instanceof Error ? e.message : String(e);
 
 function transfer(data: Hex) {
@@ -62,75 +65,57 @@ async function mined(hash: Hex): Promise<Mined> {
   };
 }
 
+/** The live node prunes old receipts, so transaction history comes from an archival node. */
+const archive = new JsonRpcProvider({ url: config.near.archivalRpcUrl });
+type TxStatus = Awaited<ReturnType<typeof archive.viewTransactionStatusWithReceipts>>;
+type Status = TxStatus["status"] | TxStatus["receipts_outcome"][number]["outcome"]["status"];
+const traced = ["prove", "verify_foreign_transaction", "on_proved", "buy"];
+
+const successValue = (status: Status) =>
+  typeof status === "object" && "SuccessValue" in status ? Buffer.from(status.SuccessValue, "base64").toString() : null;
+
 async function history(ref: NearRef): Promise<NearHistory> {
-  const provider = nearProvider();
-  const result = await provider.viewTransactionStatusWithReceipts({ txHash: ref.hash, accountId: ref.signer, waitUntil: "FINAL" });
-  const r = object(result, "NEAR transaction");
-  const tx = object(r.transaction, "NEAR transaction body");
-  requireFact(tx.hash === ref.hash, "NEAR RPC returned a different transaction");
-  const root = object(r.transaction_outcome, "NEAR transaction outcome");
-  const block = await provider.viewBlock({ blockId: text(root.block_hash, "NEAR transaction block") });
-  if (!Array.isArray(r.receipts) || !Array.isArray(r.receipts_outcome)) throw new Error("NEAR historical receipts unavailable");
-  const value = (status: unknown): string | null => {
-    const s = object(status, "execution status");
-    return typeof s.SuccessValue === "string" ? Buffer.from(s.SuccessValue, "base64").toString() : null;
-  };
-  const logs: string[] = [];
-  const outcomes = new Map(r.receipts_outcome.map(raw => {
-    const receipt = object(raw, "receipt outcome");
-    const outcome = object(receipt.outcome, "outcome");
-    if (!Array.isArray(outcome.logs)) throw new Error("missing outcome logs");
-    if (outcome.executor_id === tx.receiver_id) logs.push(...outcome.logs.map(log => text(log, "log")));
-    const v = value(outcome.status);
-    return [text(receipt.id, "outcome ID"), { ok: v !== null || "SuccessReceiptId" in object(outcome.status, "status"), value: v }];
-  }));
-  const calls: Call[] = [];
-  for (const raw of r.receipts) {
-    const receipt = object(raw, "receipt");
-    const body = object(receipt.receipt, "receipt body");
-    if (!("Action" in body)) continue;
-    const actionReceipt = object(body.Action, "action receipt");
-    if (!Array.isArray(actionReceipt.actions)) throw new Error("missing receipt actions");
-    for (const rawAction of actionReceipt.actions) {
-      const action = object(rawAction, "action");
-      if (!("FunctionCall" in action)) continue;
-      const call = object(action.FunctionCall, "function call");
-      const method = text(call.method_name, "method");
-      if (!["prove", "verify_foreign_transaction", "on_proved", "buy"].includes(method)) continue;
-      const outcome = outcomes.get(text(receipt.receipt_id, "receipt ID"));
-      if (!outcome) throw new Error("missing call outcome");
-      calls.push({ receiver: text(receipt.receiver_id, "receiver"), predecessor: text(receipt.predecessor_id, "predecessor"),
-        method, ...outcome,
-        args: object(JSON.parse(Buffer.from(text(call.args, "call args"), "base64").toString()), "call args") });
-    }
-  }
-  const returned = value(r.status);
-  return { receiver: text(tx.receiver_id, "transaction receiver"), signer: text(tx.signer_id, "transaction signer"),
+  const r = await archive.viewTransactionStatusWithReceipts({ txHash: ref.hash, accountId: ref.signer, waitUntil: "FINAL" });
+  if (!("receipts" in r)) throw new Error("NEAR historical receipts unavailable");
+  requireFact(r.transaction.hash === ref.hash, "NEAR RPC returned a different transaction");
+  const block = await archive.viewBlock({ blockId: r.transaction_outcome.block_hash });
+  const logs = r.receipts_outcome.filter(o => o.outcome.executor_id === r.transaction.receiver_id).flatMap(o => o.outcome.logs);
+  const outcomes = new Map(r.receipts_outcome.map(o => [o.id, o.outcome.status]));
+  const calls = r.receipts.flatMap(receipt => {
+    if (!("Action" in receipt.receipt)) return [];
+    return receipt.receipt.Action.actions.flatMap((action): Call[] => {
+      if (typeof action !== "object" || !("FunctionCall" in action) || !traced.includes(action.FunctionCall.method_name)) return [];
+      const status = outcomes.get(receipt.receipt_id);
+      if (!status) throw new Error("missing call outcome");
+      const value = successValue(status);
+      return [{ receiver: receipt.receiver_id, predecessor: receipt.predecessor_id, method: action.FunctionCall.method_name,
+        ok: value !== null || (typeof status === "object" && "SuccessReceiptId" in status), value,
+        args: JSON.parse(Buffer.from(action.FunctionCall.args, "base64").toString()) }];
+    });
+  });
+  const returned = successValue(r.status);
+  return { receiver: r.transaction.receiver_id, signer: r.transaction.signer_id,
     success: returned !== null, value: returned, calls, logs,
     height: block.header.height, timestamp: BigInt(block.header.timestamp_nanosec) / 1_000_000_000n };
 }
 
 async function observe(e: HeistEvidence): Promise<Observation> {
-  const provider = nearProvider();
-  const [rawLot, rawConfig, account, keys, chainId, nonce, safe, consumer, withdrawal, proof, sale, symbol, decimals] = await Promise.all([
-    nearView<unknown>(e.contract, "get_lot", { id: e.lot.id }), nearView<unknown>(e.contract, "get_config", {}),
-    provider.viewAccount({ accountId: e.contract }), provider.viewAccessKeyList({ accountId: e.contract }),
+  const [lot, deployed, hash, keys, chainId, nonce, safe, consumer, withdrawal, proof, sale, symbol, decimals] = await Promise.all([
+    view(e.contract, "get_lot", { id: e.lot.id }), view(e.contract, "get_config", {}),
+    codeHash(e.contract), fullAccessKeys(e.contract),
     publicBase.getChainId(), publicBase.getTransactionCount({ address: e.lot.address, blockTag: "latest" }),
     publicBase.getBlock({ blockTag: "safe" }), mined(e.consumingTx), mined(e.buyerWithdrawal),
-    history(e.proof).catch(error => { throw new Error(`NEAR proof history unavailable: ${nearUrl(e.proof.hash)}\n${errorMessage(error)}`); }),
-    history(e.sale).catch(error => { throw new Error(`NEAR sale history unavailable: ${nearUrl(e.sale.hash)}\n${errorMessage(error)}`); }),
+    history(e.proof).catch(error => { throw new Error(`NEAR proof history unavailable: ${nearTxUrl(e.proof.hash)}\n${errorMessage(error)}`); }),
+    history(e.sale).catch(error => { throw new Error(`NEAR sale history unavailable: ${nearTxUrl(e.sale.hash)}\n${errorMessage(error)}`); }),
     publicBase.readContract({ address: e.lot.token, abi: erc20Abi, functionName: "symbol" }),
     publicBase.readContract({ address: e.lot.token, abi: erc20Abi, functionName: "decimals" }),
   ]);
-  const l = object(rawLot, "lot");
-  const c = object(rawConfig, "config");
-  requireFact(c.signer === config.near.mpcSigner, "unexpected MPC signer");
-  const lot = { address: address(l.address, "lot.address"), token: address(l.token, "lot.token"), path: text(l.path, "lot.path"),
-    nextNonce: natural(l.next_nonce, "lot.next_nonce"), owner: text(l.owner, "lot.owner") };
-  if (safe.number === null) throw new Error("Base Safe head unavailable");
-  return { chainId, codeHash: account.code_hash, finality: finality(c.finality),
-    fullAccessKeys: keys.keys.filter(key => key.access_key.permission === "FullAccess").length,
-    lot, derivedAddress: await fetchLotAddress(e.contract, lot.path), nonce, safeHead: safe.number,
+  requireFact(lot, `no lot ${e.lot.id} on ${e.contract}`);
+  requireFact(deployed.signer === config.near.mpcSigner, "unexpected MPC signer");
+  requireFact(safe.number !== null, "Base Safe head unavailable");
+  return { chainId, codeHash: hash, finality: deployed.finality, fullAccessKeys: keys.length,
+    lot: { address: lot.address as Address, token: lot.token as Address, path: lot.path, nextNonce: lot.next_nonce, owner: lot.owner },
+    derivedAddress: await fetchLotAddress(e.contract, lot.path), nonce, safeHead: safe.number,
     consumer, withdrawal, proof, sale, tokenInfo: { symbol, decimals } };
 }
 
@@ -269,13 +254,13 @@ export async function verifyHeist(evidence: HeistEvidence, io: HeistIO = { obser
   io.log(`Alice kept a signed withdrawal for about ${tokenAmount(signed.amount, observed.tokenInfo)}, Base nonce ${signed.nonce}.`);
 
   checkBurn(observed, signed);
-  io.log(`PASS nonce ${signed.nonce} burned on Base: ${baseUrl(evidence.consumingTx)}`);
+  io.log(`PASS nonce ${signed.nonce} burned on Base: ${baseTxUrl(evidence.consumingTx)}`);
   checkProof(evidence, observed, signed.nonce);
-  io.log(`PASS NEAR MPC verified the burn: ${nearUrl(evidence.proof.hash)}`);
+  io.log(`PASS NEAR MPC verified the burn: ${nearTxUrl(evidence.proof.hash)}`);
   checkSale(evidence, observed);
-  io.log(`PASS Bob bought Alice's title: ${nearUrl(evidence.sale.hash)}`);
+  io.log(`PASS Bob bought Alice's title: ${nearTxUrl(evidence.sale.hash)}`);
   const amount = checkBuyerPaid(evidence, observed, signed);
-  io.log(`PASS Bob withdrew about ${tokenAmount(amount, observed.tokenInfo)}: ${baseUrl(evidence.buyerWithdrawal)}`);
+  io.log(`PASS Bob withdrew about ${tokenAmount(amount, observed.tokenInfo)}: ${baseTxUrl(evidence.buyerWithdrawal)}`);
 
   io.log("Broadcasting Alice's signed withdrawal once...");
   const result = await io.replay(evidence.retained);

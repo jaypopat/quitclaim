@@ -3,6 +3,8 @@ use std::collections::HashMap;
 
 use near_sdk::{near, AccountId};
 
+pub use crate::source::Schedule;
+
 pub type LotId = u32;
 
 #[near(serializers = [json, borsh])]
@@ -71,6 +73,10 @@ pub struct Lot {
     pub royalty_bps: u16,
     /// Only exists while Clean. Bound to the version it was listed at.
     pub listing: Option<Listing>,
+    /// The title owner's standing offer to lease the lot. Only while Clean with no lease, bound to the version.
+    pub lease_offer: Option<LeaseOffer>,
+    /// While set, the lease holder controls the lot and the title can't move. Ends only at Clean.
+    pub lease: Option<Lease>,
 }
 
 #[near(serializers = [json, borsh])]
@@ -81,16 +87,6 @@ pub enum Finality {
     Finalized,
 }
 
-impl Finality {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Finality::Latest => "Latest",
-            Finality::Safe => "Safe",
-            Finality::Finalized => "Finalized",
-        }
-    }
-}
-
 #[near(serializers = [json])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MintedLot {
@@ -98,12 +94,48 @@ pub struct MintedLot {
     pub address: String,
 }
 
+/// The two tokens a lot can stand for: its title (`<id>`) and, while leased, its lease (`<id>-lease`).
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Item {
+    Title,
+    Lease,
+}
+
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Listing {
+    pub item: Item,
     /// Price in yoctoNEAR.
     pub price: U128,
     pub version: u32,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct LeaseOffer {
+    /// Price in yoctoNEAR.
+    pub price: U128,
+    pub ends_at_ms: u64,
+    pub version: u32,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Lease {
+    pub holder: AccountId,
+    pub start_ms: u64,
+    pub ends_at_ms: u64,
+    /// Worst case the lease holders have moved out: per nonce, the largest transfer issued there.
+    pub committed: U128,
+}
+
+#[near(serializers = [json])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct LeaseBudget {
+    /// What the stream has vested since the lease started, up to its end.
+    pub allowed: U128,
+    pub committed: U128,
 }
 
 /// NEP-199 payout, as a view of exactly what `buy` credits.
@@ -121,6 +153,7 @@ pub struct Source {
     pub kind: String,
     pub contract: String,
     pub id: U128,
+    pub schedule: Schedule,
 }
 
 #[near(serializers = [json, borsh])]

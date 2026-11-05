@@ -11,6 +11,11 @@ export const env = {
   lotContract: () => need("LOT_CONTRACT"),
   /** Parent account for `deploy-lot`; it has no power over deployed contracts. */
   deployer: () => need("DEPLOYER_ACCOUNT"),
+  alice: () => need("ALICE_ACCOUNT"),
+  bob: () => need("BOB_ACCOUNT"),
+  carol: () => need("CAROL_ACCOUNT"),
+  minter: () => need("MINTER_ACCOUNT"),
+  keeper: () => need("KEEPER_ACCOUNT"),
   token: () => need("TOKEN") as `0x${string}`,
-  credentialsDir: process.env.NEAR_CREDENTIALS_DIR ?? `${process.env.HOME}/.near-credentials/testnet`,
+  credentialsDir: `${process.env.HOME}/.near-credentials/testnet`,
 };

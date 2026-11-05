@@ -1,13 +1,13 @@
 import type { Address, Hex } from "viem";
-import { fetchLotAddress, nextFees, type Fees, type Lot, type LotCalls } from "@quitclaim/shared";
+import { fetchLotAddress, nextFees, type Fees, type LeaseOffer, type Lot, type LotCalls } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
-import { call, getFinality, getLot, type CallOutcome } from "./near.ts";
+import { nearToYocto } from "near-api-js";
+import { call, getFinality, getLot, view, YOCTO, type CallOutcome } from "./near.ts";
 import { env } from "./env.ts";
 
-const YOCTO = 1n;
 /** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
-export const MINT_DEPOSIT = 50_000_000_000_000_000_000_000n;
+export const MINT_DEPOSIT = nearToYocto("0.05");
 
 export type Provisioned = {
   id: number;
@@ -114,11 +114,12 @@ export async function rescue(contract: string, signer: string, id: number) {
   return call(signer, contract, "rescue", { id, fees: await floor(lot, lot.next_nonce + 1) }, { deposit: YOCTO });
 }
 
-export async function list(contract: string, owner: string, id: number, priceYocto: bigint) {
-  return call(owner, contract, "list", { id, price: priceYocto.toString() });
+/** The controller lists a Clean lot: the lease while one exists, else the title. */
+export async function list(contract: string, controller: string, id: number, priceYocto: bigint) {
+  return call(controller, contract, "list", { id, price: priceYocto.toString() });
 }
 
-/** Buys at the listed price, bound to the lot version the buyer just read. */
+/** Buys whatever is listed (title or lease) at its price, bound to the lot version the buyer just read. */
 export async function buy(contract: string, buyer: string, id: number) {
   const lot = await mustLot(contract, id);
   if (!lot.listing) throw new Error(`lot ${id} is not listed`);
@@ -128,3 +129,32 @@ export async function buy(contract: string, buyer: string, id: number) {
 export async function withdraw(contract: string, account: string) {
   return call(account, contract, "withdraw_proceeds", {});
 }
+
+/** The title owner offers a Clean lot for lease until `endsAtMs`. */
+export async function offerLease(contract: string, owner: string, id: number, priceYocto: bigint, endsAtMs: number) {
+  return call(owner, contract, "offer_lease", { id, price: priceYocto.toString(), ends_at_ms: endsAtMs });
+}
+
+/** Takes a lease offer at its price, version and end time: `seen` if given, else the offer on the lot now. */
+export async function takeLease(contract: string, lessee: string, id: number, seen?: LeaseOffer) {
+  const offer = seen ?? (await mustLot(contract, id)).lease_offer;
+  if (!offer) throw new Error(`lot ${id} has no lease offer`);
+  return call(lessee, contract, "take_lease", { id, version: offer.version, ends_at_ms: offer.ends_at_ms }, { deposit: BigInt(offer.price) });
+}
+
+export async function surrenderLease(contract: string, holder: string, id: number) {
+  return call(holder, contract, "surrender_lease", { id });
+}
+
+export async function endLease(contract: string, signer: string, id: number) {
+  return call(signer, contract, "end_lease", { id });
+}
+
+/** What the lease holder may still move out right now, in token units. */
+export async function leaseLeft(contract: string, id: number) {
+  const budget = await view(contract, "lease_budget", { id });
+  return BigInt(budget.allowed) - BigInt(budget.committed);
+}
+
+/** By this machine's clock; the contract decides by NEAR block time. */
+export const leaseRunOut = (lot: Lot) => !!lot.lease && Date.now() >= lot.lease.ends_at_ms;

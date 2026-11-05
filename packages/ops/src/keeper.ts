@@ -1,22 +1,23 @@
 /**
- * The keeper settles lots: it tops up gas, broadcasts issued txs, waits for one to mine and for the
- * contract's finality, proves it, reprices a stalled burn, and rescues a lot whose outstanding tx reverted. Every action it
- * takes is permissionless on chain, so anyone can run one.
+ * The keeper settles lots: it seals a lot whose lease has run out (or ends the lease if the lot is
+ * already Clean), tops up gas, broadcasts issued txs, waits for one to mine and for the contract's
+ * finality, proves it, reprices a stalled burn, and rescues a lot whose outstanding tx reverted.
+ * Every action it takes is permissionless on chain, so anyone can run one.
  *
- *   bun run keeper            settle every lot with unproven txs once
+ *   bun run keeper            settle every lot with unproven txs or a run-out lease once
  *   bun run keeper --watch    keep settling
  */
 import type { Address, Hex } from "viem";
 import { isBurn, type Issued, type Lot } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import { env } from "./env.ts";
-import { mustLot, rebump, rescue } from "./lot.ts";
-import { call, getFinality, view, type CallOutcome } from "./near.ts";
+import { endLease, leaseRunOut, mustLot, rebump, rescue, seal } from "./lot.ts";
+import { call, getFinality, view, YOCTO, type CallOutcome } from "./near.ts";
 import { pendingLots } from "./pending.ts";
 
-const YOCTO = 1n;
-
 export type SettleStep =
+  | { kind: "seal"; outcome: CallOutcome<unknown> }
+  | { kind: "end_lease"; outcome: CallOutcome<unknown> }
   | { kind: "topup"; seq: number; tx: Hex }
   | { kind: "broadcast"; seq: number; result: base.Broadcast }
   | { kind: "mined"; seq: number; tx: Hex; block: bigint; status: "success" | "reverted" }
@@ -88,13 +89,17 @@ async function stalledBurn(lot: Lot) {
 }
 
 /**
- * Drives one lot until nothing it issued is left unproven: broadcast, wait, rescue a reverted nonce,
- * reprice a stalled burn, prove, and go again while a Sealing lot still has outstanding txs.
+ * Drives one lot until nothing it issued is left unproven: seal a run-out lease, broadcast, wait,
+ * rescue a reverted nonce, reprice a stalled burn, prove, and go again while a Sealing lot still has
+ * outstanding txs. The proof that makes a run-out lease's lot Clean also ends the lease.
  */
 export async function settle(contract: string, prover: string, id: number): Promise<Settled> {
   const steps: SettleStep[] = [];
   let reverted = false;
   let proven = false;
+  const start = await mustLot(contract, id);
+  if (leaseRunOut(start) && start.state === "Active") steps.push({ kind: "seal", outcome: await seal(contract, prover, id) });
+  if (leaseRunOut(start) && start.state === "Clean") steps.push({ kind: "end_lease", outcome: await endLease(contract, prover, id) });
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const lot = await mustLot(contract, id);
     if (!lot.issued.some((i) => i.tx_hash)) break;
@@ -129,20 +134,23 @@ export async function settle(contract: string, prover: string, id: number): Prom
   return { steps, lot, proven, reverted };
 }
 
-/** Lots with a signed tx the contract hasn't seen proven yet. */
+/** Lots with a signed tx the contract hasn't seen proven yet, or a lease that has run out. */
 function pending(contract: string) {
   return pendingLots(
     (from_index, limit) => view(contract, "nft_tokens", { from_index, limit }),
-    async (id) => (await mustLot(contract, id)).issued.some((i) => i.tx_hash),
+    async (id) => {
+      const lot = await mustLot(contract, id);
+      return lot.issued.some((i) => i.tx_hash) || leaseRunOut(lot);
+    },
   );
 }
 
 if (import.meta.main) {
   const contract = env.lotContract();
-  const prover = process.env.KEEPER_ACCOUNT ?? env.deployer();
+  const prover = env.keeper();
   const watch = Bun.argv.includes("--watch");
   do {
-    for await (const id of pending(contract)) {
+    for (const id of await pending(contract)) {
       try {
         const r = await settle(contract, prover, id);
         console.log(`lot ${id}: ${r.lot.state} next_nonce ${r.lot.next_nonce} proven=${r.proven} reverted=${r.reverted}`);
