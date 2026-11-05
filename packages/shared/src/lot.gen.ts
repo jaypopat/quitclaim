@@ -4,7 +4,8 @@ export type Finality = "Latest" | "Safe" | "Finalized";
 export type Kind =
   | "Burn"
   | {
-      Claim: {
+      Transfer: {
+        amount: string;
         to: string;
       };
     };
@@ -72,9 +73,24 @@ export interface Lot {
    */
   royalty_bps: number;
   sign_in_flight: boolean;
+  /**
+   * The position that pays out to the lot address, recorded for buyers' title search. Informational: the contract never signs calls to it.
+   */
+  source?: Source | null;
   state: LotState;
+  /**
+   * The ERC-20 the lot holds, fixed at mint. The only contract a lot signs calls to.
+   */
+  token: string;
   version: number;
-  vesting: string;
+}
+export interface Source {
+  contract: string;
+  id: string;
+  /**
+   * e.g. "sablier-lockup-v4".
+   */
+  kind: string;
 }
 export interface MintedLot {
   address: string;
@@ -133,7 +149,8 @@ export interface ListArgs {
 }
 export interface MintArgs {
   path: string;
-  vesting: string;
+  token: string;
+  source?: Source | null;
   owner_id: string;
   issuer: string;
   royalty_bps: number;
@@ -197,9 +214,10 @@ export interface RegisterSignatureArgs {
   s: string;
   v: number;
 }
-export interface RequestClaimArgs {
+export interface RequestTransferArgs {
   id: number;
   to: string;
+  amount: string;
   gas_limit: number;
   fees: Fees;
 }
@@ -219,7 +237,7 @@ export interface WithdrawProceedsArgs {}
 export type NftMetadataResult = NFTContractMetadata;
 export type NftPayoutResult = Payout;
 export type NftTransferCallResult = PromiseOrValueBoolean;
-export type RequestClaimResult = RebumpResult;
+export type RequestTransferResult = RebumpResult;
 export type RescueResult = RebumpResult;
 
 export interface LotViews {
@@ -246,7 +264,7 @@ export interface LotCalls {
   prove: { args: ProveArgs; result: ProveResult; payable: true };
   rebump: { args: RebumpArgs; result: RebumpResult; payable: true };
   register_signature: { args: RegisterSignatureArgs; result: RegisterSignatureResult; payable: false };
-  request_claim: { args: RequestClaimArgs; result: RequestClaimResult; payable: true };
+  request_transfer: { args: RequestTransferArgs; result: RequestTransferResult; payable: true };
   rescue: { args: RescueArgs; result: RescueResult; payable: true };
   seal: { args: SealArgs; result: SealResult; payable: true };
   unseal: { args: UnsealArgs; result: UnsealResult; payable: false };

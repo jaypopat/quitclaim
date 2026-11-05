@@ -21,7 +21,8 @@ pub enum LotState {
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Kind {
-    Claim { to: String },
+    /// ERC-20 `transfer(to, amount)` on the lot's token. The only way value leaves a lot.
+    Transfer { to: String, amount: U128 },
     Burn,
 }
 
@@ -53,7 +54,11 @@ pub struct Lot {
     pub issuer: AccountId,
     pub path: String,
     pub address: Option<String>,
-    pub vesting: String,
+    /// The ERC-20 the lot holds, fixed at mint. The only contract a lot signs calls to.
+    pub token: String,
+    /// The position that pays out to the lot address, recorded for buyers' title search.
+    /// Informational: the contract never signs calls to it.
+    pub source: Option<Source>,
     pub state: LotState,
     pub version: u32,
     /// Lowest nonce not yet proven consumed.
@@ -105,4 +110,14 @@ pub struct Listing {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Payout {
     pub payout: HashMap<AccountId, U128>,
+}
+
+/// Where a lot's value comes from. Anyone can pull it into the lot; nobody can redirect it.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Source {
+    /// e.g. "sablier-lockup-v4".
+    pub kind: String,
+    pub contract: String,
+    pub id: U128,
 }

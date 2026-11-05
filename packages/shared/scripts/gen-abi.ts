@@ -26,7 +26,7 @@ const definitions: Record<string, JSONSchema> = { ...abi.body.root_schema.defini
 /** A call that returns a Promise resolves to its callback's return value, which the ABI can't express. */
 const resolvesVia: Record<string, string> = {
   mint: "on_derived",
-  request_claim: "on_signed",
+  request_transfer: "on_signed",
   seal: "on_signed",
   rebump: "on_signed",
   rescue: "on_signed",

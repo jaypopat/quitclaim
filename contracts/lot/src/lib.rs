@@ -8,13 +8,14 @@ mod types;
 mod tests;
 
 use near_contract_standards::non_fungible_token::events::{NftMint, NftTransfer};
+use near_sdk::json_types::U128;
 use near_sdk::serde_json::Value;
 use near_sdk::store::{IterableMap, LookupMap, LookupSet};
 use near_sdk::{
     env, log, near, require, AccountId, Gas, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
 };
 
-pub use types::{Fees, Finality, Issued, Kind, Listing, Lot, LotId, LotState, MintedLot, Payout};
+pub use types::{Fees, Finality, Issued, Kind, Listing, Lot, LotId, LotState, MintedLot, Payout, Source};
 
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 
@@ -58,8 +59,8 @@ impl Contract {
             env::panic_str(e);
         }
         let item = Issued { seq: lot.next_seq, nonce, kind, gas_limit, fees, tx_hash: None, raw_tx: None };
-        let vesting = evm::parse_address(&lot.vesting).unwrap();
-        let payload = evm::signing_hash(&evm::build(&item, &Self::lot_address(&lot), &vesting));
+        let token = evm::parse_address(&lot.token).unwrap();
+        let payload = evm::signing_hash(&evm::build(&item, &Self::lot_address(&lot), &token));
         let seq = item.seq;
         lot.issued.push(item);
         lot.next_seq += 1;
@@ -98,10 +99,19 @@ impl Contract {
     }
 
     /// Admin-only (issuer provisioning). Paths are unique: two lots on one path would share an address.
-    pub fn mint(&mut self, path: String, vesting: String, owner_id: AccountId, issuer: AccountId, royalty_bps: u16) -> Promise {
+    pub fn mint(
+        &mut self,
+        path: String,
+        token: String,
+        source: Option<Source>,
+        owner_id: AccountId,
+        issuer: AccountId,
+        royalty_bps: u16,
+    ) -> Promise {
         require!(env::predecessor_account_id() == self.admin, "only the admin can mint");
         require!(royalty_bps <= sale::MAX_ROYALTY_BPS, "royalty above the 10% cap");
-        require!(evm::parse_address(&vesting).is_some(), "vesting must be a 0x address");
+        require!(evm::parse_address(&token).is_some(), "token must be a 0x address");
+        require!(source.as_ref().is_none_or(|s| evm::parse_address(&s.contract).is_some()), "source contract must be a 0x address");
         require!(self.paths.insert(path.clone()), "path already used");
         let id = self.next_id;
         self.next_id += 1;
@@ -112,7 +122,8 @@ impl Contract {
                 issuer,
                 path: path.clone(),
                 address: None,
-                vesting,
+                token,
+                source,
                 state: LotState::Minting,
                 version: 0,
                 next_nonce: 0,
@@ -150,16 +161,19 @@ impl Contract {
         Some(MintedLot { id, address })
     }
 
+    /// The owner moves tokens out of the lot. Outsiders can only add to the lot's balance, so a
+    /// transfer of at most the current balance can't be griefed into reverting.
     #[payable]
-    pub fn request_claim(&mut self, id: LotId, to: String, gas_limit: u64, fees: Fees) -> Promise {
+    pub fn request_transfer(&mut self, id: LotId, to: String, amount: U128, gas_limit: u64, fees: Fees) -> Promise {
         require_deposit();
         let lot = self.lot(id);
         Self::require_owner(&lot);
         require!(lot.state == LotState::Active, "lot is not Active");
         require!(evm::parse_address(&to).is_some(), "to must be a 0x address");
-        require!((evm::BURN_GAS_LIMIT..=evm::MAX_CLAIM_GAS_LIMIT).contains(&gas_limit), "gas limit out of range");
+        require!(amount.0 > 0, "amount must be positive");
+        require!((evm::BURN_GAS_LIMIT..=evm::MAX_TRANSFER_GAS_LIMIT).contains(&gas_limit), "gas limit out of range");
         let nonce = lot.next_nonce;
-        self.issue(id, lot, nonce, Kind::Claim { to }, gas_limit, fees)
+        self.issue(id, lot, nonce, Kind::Transfer { to, amount }, gas_limit, fees)
     }
 
     /// Owner freezes the lot. With nothing outstanding it is Clean at once; otherwise a burn
@@ -231,14 +245,14 @@ impl Contract {
         let mut lot = self.lot(id);
         lot.sign_in_flight = false;
         let lot_addr = Self::lot_address(&lot);
-        let vesting = evm::parse_address(&lot.vesting).unwrap();
+        let token = evm::parse_address(&lot.token).unwrap();
         let Some(pos) = lot.issued.iter().position(|i| i.seq == seq) else {
             log!("lot {} seq {} already cleared by a proof", id, seq);
             self.lots.insert(id, lot);
             return None;
         };
         let signed = sig.ok().and_then(mpc::parse_signature).and_then(|(r, s, v)| {
-            evm::assemble(&evm::build(&lot.issued[pos], &lot_addr, &vesting), r, s, v, &lot_addr)
+            evm::assemble(&evm::build(&lot.issued[pos], &lot_addr, &token), r, s, v, &lot_addr)
         });
         let raw = signed.map(|t| {
             lot.issued[pos].tx_hash = Some(t.hash);
@@ -256,13 +270,13 @@ impl Contract {
     pub fn register_signature(&mut self, id: LotId, seq: u32, r: String, s: String, v: u8) -> String {
         let mut lot = self.lot(id);
         let lot_addr = Self::lot_address(&lot);
-        let vesting = evm::parse_address(&lot.vesting).unwrap();
+        let token = evm::parse_address(&lot.token).unwrap();
         let pos = lot.issued.iter().position(|i| i.seq == seq).unwrap_or_else(|| env::panic_str("no such issued tx"));
         let word = |h: &str| -> [u8; 32] {
             hex::decode(h.trim_start_matches("0x")).ok().and_then(|b| b.try_into().ok())
                 .unwrap_or_else(|| env::panic_str("r and s must be 32-byte hex"))
         };
-        let tx = evm::build(&lot.issued[pos], &lot_addr, &vesting);
+        let tx = evm::build(&lot.issued[pos], &lot_addr, &token);
         let signed = evm::assemble(&tx, word(&r), word(&s), v, &lot_addr)
             .unwrap_or_else(|| env::panic_str("signature does not recover to the lot address"));
         lot.issued[pos].tx_hash = Some(signed.hash);
