@@ -64,7 +64,7 @@ async function main() {
   const retained = c1.ok ? (c1.value as Hex | null) : null;
   record("alice retains claim 1", "a valid signed claim(to=alice) at nonce 1, never broadcast", retained ? `${retained.slice(0, 26)}…` : c1.ok ? "no raw" : c1.error, !!retained, [c1.url]);
 
-  const early = await call(alice, contract, "nft_transfer", { receiver_id: bob, token_id: String(id) }, { deposit: 1n });
+  const early = await call(alice, contract, "nft_transfer", { receiver_id: bob, token_id: String(id), approval_id: null, memo: null }, { deposit: 1n });
   record("transfer with a pending request", "refused: lot is not Clean", early.ok ? "transferred!" : early.error, !early.ok && early.error.includes("not Clean"), [early.url]);
 
   const s = await seal(contract, alice, id);
@@ -82,7 +82,7 @@ async function main() {
   record("alice broadcasts the retained claim", "Base rejects it: its nonce was consumed", heist ? ("message" in heist ? heist.message.split("\n")[0]! : `accepted ${heist.hash}`) : "no retained tx",
     heist?.status === "nonce-too-low");
 
-  const t = await call(alice, contract, "nft_transfer", { receiver_id: bob, token_id: String(id) }, { deposit: 1n });
+  const t = await call(alice, contract, "nft_transfer", { receiver_id: bob, token_id: String(id), approval_id: null, memo: null }, { deposit: 1n });
   const moved = await lotOf(id);
   record("transfer to bob", "title moves only from Clean; lot Active for bob", `${moved.owner} ${moved.state} v${moved.version}`, t.ok && moved.owner === bob && moved.state === "Active", [t.url]);
 

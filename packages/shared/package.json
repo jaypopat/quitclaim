@@ -8,5 +8,8 @@
   "dependencies": {
     "@scure/base": "^2.4.0",
     "viem": "^2.57.16"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0"
   }
 }
