@@ -61,7 +61,7 @@ fn active_lot() -> Contract {
     let mut c = Contract::new(acc("v1.signer-prod.testnet"), admin(), Finality::Safe);
     let _ = c.mint("lot-a".into(), VESTING.into(), alice(), admin());
     as_contract();
-    assert_eq!(c.on_derived(0, Ok(LOT_KEY.into())).as_deref(), Some(LOT_ADDR));
+    assert_eq!(c.on_derived(0, Ok(LOT_KEY.into())), Some(MintedLot { id: 0, address: LOT_ADDR.into() }));
     c
 }
 

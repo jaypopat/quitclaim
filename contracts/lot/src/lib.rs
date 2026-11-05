@@ -13,7 +13,7 @@ use near_sdk::{
     env, log, near, require, AccountId, Gas, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
 };
 
-pub use types::{Fees, Finality, Issued, Kind, Lot, LotId, LotState};
+pub use types::{Fees, Finality, Issued, Kind, Lot, LotId, LotState, MintedLot};
 
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 
@@ -128,7 +128,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_derived(&mut self, id: LotId, #[callback_result] key: Result<String, PromiseError>) -> Option<String> {
+    pub fn on_derived(&mut self, id: LotId, #[callback_result] key: Result<String, PromiseError>) -> Option<MintedLot> {
         let mut lot = self.lot(id);
         let Some(pk) = key.ok().as_deref().and_then(mpc::parse_derived_key) else {
             log!("lot {} derivation failed; mint rolled back", id);
@@ -141,7 +141,7 @@ impl Contract {
         lot.state = LotState::Active;
         NftMint { owner_id: &lot.owner, token_ids: &[&id.to_string()], memo: Some(&address) }.emit();
         self.lots.insert(id, lot);
-        Some(address)
+        Some(MintedLot { id, address })
     }
 
     #[payable]

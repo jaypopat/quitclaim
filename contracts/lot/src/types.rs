@@ -79,3 +79,10 @@ impl Finality {
         }
     }
 }
+
+#[near(serializers = [json])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MintedLot {
+    pub id: LotId,
+    pub address: String,
+}

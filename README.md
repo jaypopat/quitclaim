@@ -23,6 +23,10 @@ bun run verify
 ## Commands
 
 - `bun run dev` serves the frontend with HMR.
-- `bun run --cwd packages/ops lot-address <lot-contract> <path>` prints a lot's Base address.
+- `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
+- `bun run deploy-lot <prefix> [Latest|Safe]` deploys a lot contract to `<prefix>.<ADMIN_ACCOUNT>`.
+- `bun run gate1` runs the adversarial handover end to end on a fresh lot and writes a report with every tx link to `reports/`.
+
+Ops scripts need a root `.env`; see `.env.example`.
 
 Changing the lot contract account or the path scheme changes every lot address.

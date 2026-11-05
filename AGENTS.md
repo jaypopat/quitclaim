@@ -15,7 +15,10 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 - `bun run verify` runs everything: typecheck, TS tests, lot test and build, vesting build and test. Run it before committing.
 - `bun run dev` serves the web app.
-- `bun run --cwd packages/ops lot-address <lot-contract> <path>` prints a lot's Base address.
+- `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
+- `bun run deploy-lot <prefix> [Latest|Safe]` creates `<prefix>.<ADMIN_ACCOUNT>` and deploys the lot contract.
+- `bun run gate1` runs the adversarial handover on a fresh lot and writes `reports/gate1-*.md`.
+- Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root.
 
 ## Conventions
 
@@ -37,4 +40,5 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `sign` and `verify_foreign_transaction` each need 1 yoctoNEAR and at least 15 Tgas. Ethereum isn't whitelisted for verification; Base is. Every failed verification is a silent ~115 s timeout.
 - Base charges an L1 fee on top of L2 gas. Estimate gas per tx; never hardcode it.
 - Local DNS blocks some RPC hosts. Use publicnode for Base Sepolia and thirdweb for Sepolia.
-- The funder key is in `spikes/.env`. Never print or commit it.
+- The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
+- `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.
