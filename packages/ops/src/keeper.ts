@@ -150,7 +150,7 @@ if (import.meta.main) {
   const prover = env.keeper();
   const watch = Bun.argv.includes("--watch");
   do {
-    for await (const id of pending(contract)) {
+    for (const id of await pending(contract)) {
       try {
         const r = await settle(contract, prover, id);
         console.log(`lot ${id}: ${r.lot.state} next_nonce ${r.lot.next_nonce} proven=${r.proven} reverted=${r.reverted}`);

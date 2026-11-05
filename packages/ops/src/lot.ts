@@ -1,5 +1,5 @@
 import type { Address, Hex } from "viem";
-import { fetchLotAddress, nextFees, type Fees, type Lot, type LotCalls } from "@quitclaim/shared";
+import { fetchLotAddress, nextFees, type Fees, type LeaseOffer, type Lot, type LotCalls } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
 import { nearToYocto } from "near-api-js";
@@ -135,11 +135,11 @@ export async function offerLease(contract: string, owner: string, id: number, pr
   return call(owner, contract, "offer_lease", { id, price: priceYocto.toString(), ends_at_ms: endsAtMs });
 }
 
-/** Takes the lease offer at its price, bound to the lot version the lessee just read. */
-export async function takeLease(contract: string, lessee: string, id: number) {
-  const lot = await mustLot(contract, id);
-  if (!lot.lease_offer) throw new Error(`lot ${id} has no lease offer`);
-  return call(lessee, contract, "take_lease", { id, version: lot.version }, { deposit: BigInt(lot.lease_offer.price) });
+/** Takes a lease offer at its price, version and end time: `seen` if given, else the offer on the lot now. */
+export async function takeLease(contract: string, lessee: string, id: number, seen?: LeaseOffer) {
+  const offer = seen ?? (await mustLot(contract, id)).lease_offer;
+  if (!offer) throw new Error(`lot ${id} has no lease offer`);
+  return call(lessee, contract, "take_lease", { id, version: offer.version, ends_at_ms: offer.ends_at_ms }, { deposit: BigInt(offer.price) });
 }
 
 export async function surrenderLease(contract: string, holder: string, id: number) {

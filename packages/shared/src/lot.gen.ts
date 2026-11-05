@@ -308,6 +308,7 @@ export interface SurrenderLeaseArgs {
 export interface TakeLeaseArgs {
   id: number;
   version: number;
+  ends_at_ms: number;
 }
 export interface UnsealArgs {
   id: number;

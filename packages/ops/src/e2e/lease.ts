@@ -1,8 +1,9 @@
 /**
- * Leases: Alice leases her Clean lot to Bob. Alice is locked out; Bob moves out only what the stream
- * vests during the lease, keeps a signed transfer, seals, and resells the lease to Carol, and Base
- * rejects his kept transfer. At expiry the keeper seals and proves, the lease token burns, Carol's
- * kept transfer is rejected, and Alice withdraws again.
+ * Leases: Alice leases her Clean lot to Bob, who can't be held to a term she shortens after he read
+ * it. Alice is locked out; Bob moves out only what the stream vests during the lease, keeps a signed
+ * transfer, seals, and resells the lease to Carol, and Base rejects his kept transfer. At expiry the
+ * keeper seals and proves, the lease token burns, Carol's kept transfer is rejected, and Alice
+ * withdraws again.
  */
 import { nearToYocto } from "near-api-js";
 import * as base from "../base.ts";
@@ -36,6 +37,16 @@ export async function lease(run: Run) {
   run.record("alice offers a lease", `a ${term / 60_000}-minute lease, bound to the current version`,
     `ends ${new Date(endsAt).toISOString()}, price ${offered.lease_offer?.price}, version ${offered.lease_offer?.version}`,
     offer.ok && offered.lease_offer?.version === offered.version, [offer.url]);
+
+  const quoted = offered.lease_offer;
+  if (!quoted) throw new Error(`lot ${id} has no lease offer`);
+  const shortened = await offerLease(contract, alice, id, PRICE, Date.now() + 60_000);
+  const stale = await takeLease(contract, bob, id, quoted);
+  const restored = await offerLease(contract, alice, id, PRICE, endsAt);
+  run.record("alice shortens the offer after bob read it", "same price and version, so bob's take of the term he read is refused",
+    stale.ok ? "taken!" : stale.error,
+    shortened.ok && !stale.ok && stale.error.includes("the lease offer ends at a different time") && restored.ok,
+    [shortened.url, stale.url, restored.url]);
 
   const [aliceBefore, minterBefore] = [await proceeds(alice), await proceeds(minter)];
   const take = await takeLease(contract, bob, id);

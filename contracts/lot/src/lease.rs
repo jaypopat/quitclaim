@@ -107,12 +107,15 @@ impl Contract {
     }
 
     /// Pays the owner and the minter royalty in state, mints the lease token and hands the caller control.
+    /// `ends_at_ms` is the end the lessee accepted: replacing an offer keeps the version, so a
+    /// shortened term must not pass for the one they saw.
     #[payable]
-    pub fn take_lease(&mut self, id: LotId, version: u32) {
+    pub fn take_lease(&mut self, id: LotId, version: u32, ends_at_ms: u64) {
         let mut lot = self.load(id);
         let offer = lot.lease_offer.clone().unwrap_or_else(|| env::panic_str("no lease offer"));
         require!(lot.state == LotState::Clean, "lot is not Clean");
         require!(offer.version == lot.version && version == lot.version, "lease offer is stale");
+        require!(ends_at_ms == offer.ends_at_ms, "the lease offer ends at a different time");
         require!(env::attached_deposit().as_yoctonear() == offer.price.0, "attach exactly the lease price");
         let now = env::block_timestamp_ms();
         require!(now < offer.ends_at_ms, "the lease offer has run out");

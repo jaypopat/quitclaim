@@ -379,7 +379,7 @@ async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Resul
     c.call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 1).await?;
     let ends_at_ms = c.now_ms().await? + 30_000;
     c.call(&c.alice, &c.lot, "offer_lease", json!({"id":0,"price":ONE_NEAR.to_string(),"ends_at_ms":ends_at_ms}), 0).await?;
-    c.call(&c.bob, &c.lot, "take_lease", json!({"id":0,"version":1}), ONE_NEAR).await?;
+    c.call(&c.bob, &c.lot, "take_lease", json!({"id":0,"version":1,"ends_at_ms":ends_at_ms}), ONE_NEAR).await?;
     assert_eq!(c.view("nft_token", json!({"token_id":"0-lease"})).await?["owner_id"], c.bob.as_str());
 
     let transfer = json!({"id":0,"to":ALICE_EVM,"amount":"10000000000000000000","gas_limit":150000,

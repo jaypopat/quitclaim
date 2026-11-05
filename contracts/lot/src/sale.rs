@@ -93,13 +93,13 @@ impl Contract {
         U128(self.proceeds.get(&account_id).copied().unwrap_or(0))
     }
 
-    /// NEP-199, view only: exactly what `buy` would credit for `balance`.
+    /// NEP-199, view only: exactly what `buy` would credit for `balance`, for a token `nft_token` shows.
     pub fn nft_payout(&self, token_id: TokenId, balance: U128, max_len_payout: Option<u32>) -> Payout {
         let (id, item) = nft::parse_token(&token_id);
-        let lot = self.lot(id);
+        let (lot, holder) = self.live_token(id, item).unwrap_or_else(|| env::panic_str("no such token"));
         let (seller_share, royalty) = split(balance.0, lot.royalty_bps);
         let mut payout: HashMap<AccountId, U128> = HashMap::new();
-        for (account, amount) in [(Self::holder(&lot, item).clone(), seller_share), (lot.minter.clone(), royalty)] {
+        for (account, amount) in [(holder.clone(), seller_share), (lot.minter.clone(), royalty)] {
             if amount > 0 {
                 payout.entry(account).or_insert(U128(0)).0 += amount;
             }

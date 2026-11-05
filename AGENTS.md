@@ -36,6 +36,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 - Record a tx as issued **before** calling `sign`. MPC signatures are public in the signer's receipts.
 - At most one outstanding nonce per lot. Any new tx at that nonce raises **both** EIP-1559 fees by ≥10%, under hard caps.
+- A burn with no recorded signature is re-signed in place; only burns are ever re-signed.
 - `prove` only uses tx hashes from contract state. Any signature accepted from outside must `ecrecover` to the lot address, or an attacker can sign the same payload with their own key and fake Clean.
 - Transfer and sale only from `Clean`, and every title or lease move goes through `move_title`. Listings and lease offers are bound to the lot version.
 - One controller: `controller(lot)` is the lease holder while a lease exists, else the title owner. Signing, sealing, unsealing and listing check it, never the owner directly.

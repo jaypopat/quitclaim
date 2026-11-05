@@ -64,16 +64,21 @@ impl Contract {
 
     /// Records the tx as issued, then asks MPC to sign it.
     fn issue(&mut self, id: LotId, mut lot: Lot, nonce: u64, kind: Kind, gas_limit: u64, fees: Fees) -> Promise {
-        require!(!lot.sign_in_flight, "a sign request is already in flight");
         if let Err(e) = evm::check_fees(&lot.issued, nonce, &fees, &kind) {
             env::panic_str(e);
         }
-        let item = Issued { seq: lot.next_seq, nonce, kind, gas_limit, fees, tx_hash: None, raw_tx: None };
-        let token = lot.token.parse::<evm::Address>().unwrap();
-        let payload = evm::signing_hash(&evm::build(&item, &Self::lot_address(&lot), &token));
-        let seq = item.seq;
-        lot.issued.push(item);
+        lot.issued.push(Issued { seq: lot.next_seq, nonce, kind, gas_limit, fees, tx_hash: None, raw_tx: None });
         lot.next_seq += 1;
+        let pos = lot.issued.len() - 1;
+        self.sign(id, lot, pos)
+    }
+
+    /// Asks MPC to sign an issued tx; `on_signed` records the signature.
+    fn sign(&mut self, id: LotId, mut lot: Lot, pos: usize) -> Promise {
+        require!(!lot.sign_in_flight, "a sign request is already in flight");
+        let token = lot.token.parse::<evm::Address>().unwrap();
+        let payload = evm::signing_hash(&evm::build(&lot.issued[pos], &Self::lot_address(&lot), &token));
+        let seq = lot.issued[pos].seq;
         lot.sign_in_flight = true;
         let path = lot.path.clone();
         self.lots.insert(id, lot);
@@ -83,8 +88,15 @@ impl Contract {
             .then(Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS).on_signed(id, seq))
     }
 
+    /// A burn with no recorded signature is signed again as it stands, so failed signing never
+    /// uses up the burns a nonce allows. Only burns are re-signed: any signature of one can only
+    /// consume the nonce. A burn with a recorded signature needs a pricier replacement.
     fn burn(&mut self, id: LotId, lot: Lot, nonce: u64, fees: Fees) -> Promise {
-        self.issue(id, lot, nonce, Kind::Burn, evm::BURN_GAS_LIMIT, fees)
+        let highest = lot.issued.iter().rposition(|i| i.nonce == nonce && i.kind == Kind::Burn);
+        match highest.filter(|&pos| lot.issued[pos].tx_hash.is_none()) {
+            Some(pos) => self.sign(id, lot, pos),
+            None => self.issue(id, lot, nonce, Kind::Burn, evm::BURN_GAS_LIMIT, fees),
+        }
     }
 
     /// A lease that has run out ends the moment its lot is Clean.
@@ -261,9 +273,10 @@ impl Contract {
         PromiseOrValue::Promise(self.burn(id, lot, nonce, fees))
     }
 
-    /// Anyone may re-sign the burn at an outstanding nonce with higher fees, so a seller who seals
-    /// and walks away can't strand the lot. The nonce is explicit: after a rescue, the burn at the
-    /// stuck nonce must still be repriceable. Burns are 0-value self-transfers.
+    /// Anyone may re-sign the burn at an outstanding nonce, so a seller who seals and walks away
+    /// can't strand the lot. `fees` apply only when the burn already has a recorded signature and
+    /// needs a replacement. The nonce is explicit: after a rescue, the burn at the stuck nonce must
+    /// still be repriceable. Burns are 0-value self-transfers.
     #[payable]
     pub fn rebump(&mut self, id: LotId, nonce: u64, fees: Fees) -> Promise {
         require_deposit();

@@ -132,11 +132,66 @@ fn mint(c: &mut Contract, minter: AccountId, name: &str, owner: AccountId, royal
     c.on_mint_verified(id, STORAGE, verdict)
 }
 
-fn active_lot() -> Contract {
+fn minted_lot(key: &str, address: &str) -> Contract {
     let mut c = new_contract(Finality::Safe);
-    let minted = mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested());
-    assert_eq!(minted, Some(MintedLot { id: 0, address: LOT_ADDR.into() }));
+    let minted = mint(&mut c, admin(), "lot-a", alice(), 250, key, creation_log(address, false, false), attested());
+    assert_eq!(minted, Some(MintedLot { id: 0, address: address.into() }));
     c
+}
+
+fn active_lot() -> Contract {
+    minted_lot(LOT_KEY, LOT_ADDR)
+}
+
+/// Stands in for the lot's MPC-derived key, so a test can sign whatever the lot asks MPC to sign.
+fn held_key() -> secp256k1::SecretKey {
+    secp256k1::SecretKey::from_slice(&[7; 32]).unwrap()
+}
+
+/// An Active lot whose derived key is the held key.
+fn held_lot() -> Contract {
+    let pk = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &held_key()).serialize_uncompressed();
+    let key = near_sdk::PublicKey::from_parts(near_sdk::CurveType::SECP256K1, pk[1..].to_vec()).unwrap();
+    minted_lot(&String::from(&key), &format!("{:#x}", evm::Address::from_raw_public_key(&pk[1..])))
+}
+
+/// The args of the `method` call that the last contract call scheduled.
+fn scheduled(method: &str) -> Value {
+    near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).find_map(|a| match a {
+        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == method.as_bytes() => serde_json::from_slice(&args).ok(),
+        _ => None,
+    }).unwrap_or_else(|| panic!("no {method} call scheduled"))
+}
+
+/// The issued seq the last call asked MPC to sign.
+fn signing_seq() -> u32 {
+    scheduled("on_signed")["seq"].as_u64().unwrap() as u32
+}
+
+/// MPC fails the sign request the last call made, so its tx stays issued with no signature.
+fn sign_fails(c: &mut Contract) {
+    let seq = signing_seq();
+    as_contract();
+    assert_eq!(c.on_signed(0, seq, Err(PromiseError::Failed)), None);
+}
+
+/// MPC answers the sign request the last call made, signing its payload with the held key.
+/// Returns the seq it signed.
+fn held_signs(c: &mut Contract) -> u32 {
+    let seq = signing_seq();
+    let payload = hex::decode(scheduled("sign")["request"]["payload_v2"]["Ecdsa"].as_str().unwrap()).unwrap();
+    let message = secp256k1::Message::from_slice(&payload).unwrap();
+    let (v, rs) = secp256k1::Secp256k1::new().sign_ecdsa_recoverable(&message, &held_key()).serialize_compact();
+    let v = v.to_i32() as u8;
+    let response = json!({
+        "scheme": "Secp256k1",
+        "big_r": { "affine_point": format!("{:02x}{}", 2 + v, hex::encode(&rs[..32])) },
+        "s": { "scalar": hex::encode(&rs[32..]) },
+        "recovery_id": v,
+    });
+    as_contract();
+    assert!(c.on_signed(0, seq, Ok(response)).is_some(), "the signature is recorded");
+    seq
 }
 
 fn signed_transfer0() -> Contract {
@@ -474,17 +529,20 @@ fn old_owner_is_locked_out_after_transfer() {
 }
 
 #[test]
-fn anyone_can_rebump_a_sealing_burn() {
-    let mut c = signed_transfer0();
+fn anyone_can_replace_a_signed_burn_with_higher_fees() {
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    held_signs(&mut c);
     call(alice(), 1);
     let _ = c.seal(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    held_signs(&mut c);
     call(bob(), 1);
     let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
     assert_eq!(lot.issued.len(), 3);
     assert!(lot.issued.iter().all(|i| i.nonce == 0));
+    assert_eq!((signing_seq(), lot.issued[2].kind.clone(), lot.issued[2].fees), (2, Kind::Burn, fees(61_000_000, 1_210_000)));
 }
 
 #[test]
@@ -544,25 +602,18 @@ fn sealing_with_burn() -> Contract {
 #[test]
 #[should_panic(expected = "fees below the 1 Mwei floor")]
 fn zero_fees_are_rejected() {
-    let mut c = sealing_with_burn();
-    call(bob(), 1);
-    let _ = c.rebump(0, 0, fees(0, 0));
+    let mut c = signed_transfer0();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(0, 0));
 }
 
 fn bump(f: Fees) -> Fees {
     fees(f.max_fee.0 * 11 / 10 + 1, f.max_prio.0 * 11 / 10 + 1)
 }
 
-/// MPC fails to sign the request just issued, so it stays issued with no signature.
-fn sign_fails(c: &mut Contract) {
-    let seq = c.get_lot(0).unwrap().next_seq - 1;
-    as_contract();
-    assert_eq!(c.on_signed(0, seq, Err(PromiseError::Failed)), None);
-}
-
 /// Alice uses up the transfers at nonce 0, none of them signed. Returns the next valid fees.
 fn failed_transfers() -> (Contract, Fees) {
-    let mut c = active_lot();
+    let mut c = held_lot();
     let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
     for _ in 0..evm::MAX_ISSUED_PER_NONCE {
         call(alice(), 1);
@@ -573,17 +624,18 @@ fn failed_transfers() -> (Contract, Fees) {
     (c, f)
 }
 
-/// After the failed transfers, Alice seals and anyone rebumps the burn until nonce 0 holds every burn it may.
+/// After the failed transfers, Alice seals and anyone replaces the signed burn until nonce 0 holds
+/// every burn it may.
 fn burns_used_up() -> (Contract, Fees) {
     let (mut c, mut f) = failed_transfers();
     call(alice(), 1);
     let _ = c.seal(0, f);
-    sign_fails(&mut c);
+    held_signs(&mut c);
     for _ in 1..evm::MAX_ISSUED_PER_NONCE {
         f = bump(f);
         call(bob(), 1);
         let _ = c.rebump(0, 0, f);
-        sign_fails(&mut c);
+        held_signs(&mut c);
     }
     (c, bump(f))
 }
@@ -618,11 +670,16 @@ fn burns_per_nonce_are_bounded() {
 
 #[test]
 fn burn_at_the_stuck_nonce_stays_repriceable_after_a_rescue() {
-    let mut c = sealing_with_burn();
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
+    sign_fails(&mut c);
+    call(alice(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    held_signs(&mut c);
     call(bob(), 1);
     let _ = c.rescue(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 2, Err(PromiseError::Failed));
+    sign_fails(&mut c);
     call(bob(), 1);
     let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
@@ -891,6 +948,8 @@ fn a_lot_awaiting_mpc_is_not_an_nft_yet() {
     assert_eq!(c.get_lot(0).unwrap().state, LotState::Minting);
     assert!(c.nft_token("0".into()).is_none());
     assert_eq!((c.nft_total_supply().0, c.nft_tokens(None, None).len()), (0, 0));
+    let payout = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.nft_payout("0".into(), U128(PRICE), None)));
+    assert!(payout.is_err(), "and has no payout");
 }
 
 #[test]
@@ -912,18 +971,36 @@ const TOKEN_UNIT: u128 = 10u128.pow(18);
 const TAKEN: u64 = 1_100_000;
 const ENDS: u64 = 1_700_000;
 
-fn offered() -> Contract {
-    let mut c = clean_lot();
+fn offer(c: &mut Contract) {
     call(alice(), 0);
     c.offer_lease(0, U128(PRICE), ENDS);
+}
+
+fn take(c: &mut Contract) {
+    clock(TAKEN);
+    call(bob(), PRICE);
+    c.take_lease(0, 1, ENDS);
+}
+
+fn offered() -> Contract {
+    let mut c = clean_lot();
+    offer(&mut c);
     c
 }
 
 fn leased() -> Contract {
     let mut c = offered();
-    clock(TAKEN);
-    call(bob(), PRICE);
-    c.take_lease(0, 1);
+    take(&mut c);
+    c
+}
+
+/// Bob leases a lot whose key the test holds.
+fn held_lease() -> Contract {
+    let mut c = held_lot();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(1, 1));
+    offer(&mut c);
+    take(&mut c);
     c
 }
 
@@ -931,9 +1008,7 @@ fn leased() -> Contract {
 fn lessee_requests(c: &mut Contract, amount: u128, fees: Fees) {
     call(bob(), 1);
     let _ = c.request_transfer(0, ALICE_EVM.into(), U128(amount), 150_000, fees);
-    let seq = c.get_lot(0).unwrap().next_seq - 1;
-    as_contract();
-    let _ = c.on_signed(0, seq, Err(PromiseError::Failed));
+    sign_fails(c);
 }
 
 /// Bob signs the fixture transfer at nonce 0, seals, and the transfer is proven: Clean, lease still live.
@@ -1112,6 +1187,70 @@ fn expiry_burns_and_proves_the_lessees_signature_before_control_returns() {
     assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
 }
 
+/// A lessee who seals and unseals while MPC fails must not fill nonce 0 with unsigned burns, or
+/// the expiry seal is refused and the lease never ends.
+#[test]
+fn failed_signing_cannot_strand_an_expired_lease() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.seal(0, f);
+        sign_fails(&mut c);
+        call(bob(), 0);
+        c.unseal(0);
+    }
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.issued.len(), lot.issued[1].kind.clone()), (2, Kind::Burn), "each seal signs the same burn again");
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, bump(f));
+    let burn = held_signs(&mut c);
+    assert_eq!(burn, lot.issued[1].seq);
+    assert!(prove_ok(&mut c, burn));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(*Contract::controller(&lot), alice());
+    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+}
+
+/// Rebumps while MPC fails must not use up the burns at the stuck nonce, or a rescue at the next
+/// nonce could never mine.
+#[test]
+fn rebumps_under_failed_signing_re_sign_the_burn_in_place() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    clock(ENDS);
+    f = bump(f);
+    call(carol(), 1);
+    let _ = c.seal(0, f);
+    sign_fails(&mut c);
+    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+        f = bump(f);
+        call(carol(), 1);
+        let _ = c.rebump(0, 0, f);
+        sign_fails(&mut c);
+    }
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.state, lot.issued.len()), (LotState::Sealing, 2), "the issued list never grows");
+
+    call(carol(), 1);
+    let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
+    let rescue = held_signs(&mut c);
+    call(carol(), 1);
+    let _ = c.rebump(0, 0, f);
+    assert_eq!(held_signs(&mut c), lot.issued[1].seq, "the stuck nonce's burn is still signable after the rescue");
+    assert!(c.get_lot(0).unwrap().issued.iter().filter(|i| i.kind == Kind::Burn).all(|i| i.tx_hash.is_some()));
+    assert!(prove_ok(&mut c, rescue));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!((lot.state, lot.lease, lot.next_nonce, lot.issued.len()), (LotState::Clean, None, 2, 0));
+}
+
 #[test]
 #[should_panic(expected = "the lease has run out")]
 fn the_lessee_cannot_unseal_after_the_lease_runs_out() {
@@ -1167,6 +1306,17 @@ fn a_lease_that_runs_out_at_clean_ends_on_the_next_call() {
     assert_eq!((lot.lease, lot.listing.unwrap().item), (None, Item::Title));
 }
 
+/// Payout must not name the former holder of a lease the NFT views no longer show.
+#[test]
+#[should_panic(expected = "no such token")]
+fn a_run_out_lease_has_no_payout() {
+    let c = lessee_sealed_clean();
+    clock(ENDS);
+    call(carol(), 0);
+    assert!(c.nft_token("0-lease".into()).is_none());
+    let _ = c.nft_payout("0-lease".into(), U128(PRICE), None);
+}
+
 #[test]
 fn anyone_ends_a_lease_that_ran_out_at_clean() {
     let mut c = lessee_sealed_clean();
@@ -1191,7 +1341,22 @@ fn end_lease_refuses_a_live_lease() {
 fn a_lease_offer_is_bound_to_the_version_the_taker_saw() {
     let mut c = offered();
     call(bob(), PRICE);
-    c.take_lease(0, 0);
+    c.take_lease(0, 0, ENDS);
+}
+
+/// Replacing an offer keeps the version, so only the end time stops a take of the quoted term
+/// from buying a shorter one.
+#[test]
+#[should_panic(expected = "the lease offer ends at a different time")]
+fn a_lease_is_taken_only_on_the_term_the_lessee_accepted() {
+    let mut c = offered();
+    let quoted = c.get_lot(0).unwrap().lease_offer.unwrap();
+    clock(TAKEN);
+    call(alice(), 0);
+    c.offer_lease(0, quoted.price, TAKEN + 1_000);
+    assert_eq!(c.get_lot(0).unwrap().lease_offer.unwrap().version, quoted.version);
+    call(bob(), PRICE);
+    c.take_lease(0, quoted.version, quoted.ends_at_ms);
 }
 
 #[test]
@@ -1201,7 +1366,7 @@ fn unseal_cancels_the_lease_offer() {
     call(alice(), 0);
     c.unseal(0);
     call(bob(), PRICE);
-    c.take_lease(0, 2);
+    c.take_lease(0, 2, ENDS);
 }
 
 #[test]
@@ -1210,7 +1375,7 @@ fn a_run_out_offer_cannot_be_taken() {
     let mut c = offered();
     clock(ENDS);
     call(bob(), PRICE);
-    c.take_lease(0, 1);
+    c.take_lease(0, 1, ENDS);
 }
 
 #[test]
@@ -1218,7 +1383,7 @@ fn a_run_out_offer_cannot_be_taken() {
 fn the_owner_cannot_take_their_own_lease() {
     let mut c = offered();
     call(alice(), PRICE);
-    c.take_lease(0, 1);
+    c.take_lease(0, 1, ENDS);
 }
 
 #[test]
@@ -1318,6 +1483,29 @@ fn an_owner_offset_past_their_tokens_is_out_of_bounds() {
     let c = leased();
     call(bob(), 0);
     let _ = c.nft_tokens_for_owner(bob(), Some(U128(2)), None);
+}
+
+/// Settling closes leases, which shrinks the enumeration under the next page's offset, so the
+/// keeper lists every title before it settles any.
+#[test]
+fn titles_listed_before_settling_cover_every_run_out_lease() {
+    let mut c = leased();
+    let lot = c.get_lot(0).unwrap();
+    for id in 1..51 {
+        c.lots.insert(id, lot.clone());
+    }
+    clock(ENDS);
+    call(carol(), 1);
+    let mut tokens = c.nft_tokens(Some(U128(0)), Some(100));
+    tokens.extend(c.nft_tokens(Some(U128(100)), Some(100)));
+    let titles: Vec<LotId> = tokens.iter().filter_map(|t| t.token_id.parse().ok()).collect();
+    assert_eq!(titles, (0..51).collect::<Vec<_>>());
+    for id in titles {
+        call(carol(), 1);
+        let _ = c.seal(id, fees(evm::MIN_FEE, evm::MIN_FEE));
+    }
+    assert_eq!(c.nft_total_supply().0, 51, "fewer tokens than the second page's offset");
+    assert!((0..51).all(|id| c.get_lot(id).unwrap().lease.is_none()));
 }
 
 #[test]

@@ -96,6 +96,16 @@ impl Contract {
             std::iter::once((*id, l, Item::Title, &l.owner)).chain(lease)
         })
     }
+
+    /// The lot and holder of a token the views show: a minted lot's title, or its live lease.
+    pub(crate) fn live_token(&self, id: LotId, item: Item) -> Option<(&Lot, &AccountId)> {
+        let lot = self.lots.get(&id).filter(|l| is_minted(l))?;
+        let holder = match item {
+            Item::Title => &lot.owner,
+            Item::Lease => &Self::live_lease(lot)?.holder,
+        };
+        Some((lot, holder))
+    }
 }
 
 #[near]
@@ -123,8 +133,8 @@ impl Contract {
 
     pub fn nft_token(&self, token_id: TokenId) -> Option<Token> {
         let (id, item) = try_parse(&token_id)?;
-        let lot = self.lots.get(&id).filter(|l| is_minted(l))?;
-        (item == Item::Title || Self::live_lease(lot).is_some()).then(|| token(id, lot, item))
+        let (lot, _) = self.live_token(id, item)?;
+        Some(token(id, lot, item))
     }
 
     pub fn nft_metadata(&self) -> NFTContractMetadata {
