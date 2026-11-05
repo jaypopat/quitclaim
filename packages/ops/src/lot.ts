@@ -14,6 +14,7 @@ export async function provision(opts: {
   path: string;
   owner: string;
   issuer: string;
+  royaltyBps?: number;
   durationSec?: bigint;
   total?: bigint;
   gasFund?: bigint;
@@ -26,6 +27,7 @@ export async function provision(opts: {
     vesting: vesting.address,
     owner_id: opts.owner,
     issuer: opts.issuer,
+    royalty_bps: opts.royaltyBps ?? 250,
   });
   if (!mint.ok || !mint.value) throw new Error(`mint failed: ${mint.ok ? "derivation rolled back" : mint.error}`);
   if (mint.value.address.toLowerCase() !== address.toLowerCase()) {
@@ -125,4 +127,19 @@ export async function relay(contract: string, prover: string, id: number, pick: 
   const outcome = await call(prover, contract, "prove", { id, seq: mined.issued.seq }, { deposit: YOCTO });
   steps.push({ kind: "prove", seq: mined.issued.seq, outcome });
   return { steps, lot: await mustLot(contract, id), proven: outcome.ok && outcome.value === true, reverted };
+}
+
+export async function list(contract: string, owner: string, id: number, priceYocto: bigint) {
+  return call(owner, contract, "list", { id, price: priceYocto.toString() });
+}
+
+/** Buys at the listed price, bound to the lot version the buyer just read. */
+export async function buy(contract: string, buyer: string, id: number) {
+  const lot = await mustLot(contract, id);
+  if (!lot.listing) throw new Error(`lot ${id} is not listed`);
+  return call(buyer, contract, "buy", { id, version: lot.version }, { deposit: BigInt(lot.listing.price) });
+}
+
+export async function withdraw(contract: string, account: string) {
+  return call(account, contract, "withdraw_proceeds", {});
 }
