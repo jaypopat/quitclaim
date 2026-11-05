@@ -1,4 +1,4 @@
-import { Account, FailoverRpcProvider, JsonRpcProvider, actions, teraToGas } from "near-api-js";
+import { Account, FailoverRpcProvider, JsonRpcProvider, actions, teraToGas, type KeyPairString } from "near-api-js";
 import { config, nearRpc, nearView, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
@@ -7,7 +7,7 @@ export type CallOutcome<T> = (Sent & { ok: true; value: T }) | (Sent & { ok: fal
 
 const explorer = (tx: string) => `https://testnet.nearblocks.io/txns/${tx}`;
 
-async function keyFor(accountId: string): Promise<string> {
+async function keyFor(accountId: string): Promise<KeyPairString> {
   const file = Bun.file(`${env.credentialsDir}/${accountId}.json`);
   if (!(await file.exists())) throw new Error(`no credentials for ${accountId} in ${env.credentialsDir}`);
   return (await file.json()).private_key;
@@ -17,7 +17,7 @@ async function keyFor(accountId: string): Promise<string> {
 export const provider = () => new FailoverRpcProvider(config.near.rpcUrls.map((url) => new JsonRpcProvider({ url })));
 
 export async function account(accountId: string): Promise<Account> {
-  return new Account(accountId, provider(), (await keyFor(accountId)) as never);
+  return new Account(accountId, provider(), await keyFor(accountId));
 }
 
 
@@ -55,8 +55,7 @@ export function view<M extends keyof LotViews>(contractId: string, method: M, ar
 export const getLot = (contractId: string, id: number) => view(contractId, "get_lot", { id });
 
 export async function getFinality(contractId: string) {
-  const [, , finality] = await view(contractId, "get_config", {});
-  return finality;
+  return (await view(contractId, "get_config", {})).finality;
 }
 
 export async function codeHash(accountId: string): Promise<string> {

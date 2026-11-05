@@ -16,10 +16,10 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run verify` runs everything: typecheck, TS tests, lot test and build, EVM build and test. Run it before committing.
 - `bun run dev` serves the web app.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
-- `bun run deploy-lot <prefix> [Latest|Safe]` creates `<prefix>.<ADMIN_ACCOUNT>` and deploys the lot contract.
-- `bun run e2e [handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
+- `bun run deploy-lot <prefix> [Latest|Safe]` creates `<prefix>.<DEPLOYER_ACCOUNT>` and deploys the lot contract.
+- `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
 - `bun run keeper [--watch]` settles lots: gas top-up, broadcast, prove, rescue. Every action is permissionless.
-- Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root.
+- Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 
 ## Conventions
 
@@ -36,6 +36,8 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - The lot never signs calls to Sablier (or any source). Anyone pulls the stream into the lot; a lot-signed withdrawal could be griefed into reverting (`WithdrawAmountZero`). Outsiders can only add to the lot's balance.
 - `buy` credits proceeds in state with no cross-contract calls. Payouts are pulled; `withdraw_proceeds` zeroes before transferring and restores once on failure.
 - Use the MPC `recovery_id` as yParity as-is. Strip leading zeros from r/s before RLP.
+- Minting has no admin. `mint_proven` takes Sablier's `CreateLockupLinearStream` log, checks emitter, event, non-cancelable, non-transferable and that the recipient is the derived lot address, then has MPC attest that exact log (`expected_payload_hash`, computed with `near-mpc-contract-interface` pinned to the signer's revision). Any failure rolls the mint back.
+- Paths are `<issuer account>/<name>`, set by the contract. A front-runner minting someone else's stream gets a different address, so the recipient check fails.
 - The lot address depends on the lot contract account plus the path. Changing either orphans every lot.
 
 ## Gotchas

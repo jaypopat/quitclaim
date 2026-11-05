@@ -16,7 +16,7 @@ const PRICE = 10n ** 23n;
 const ROYALTY_BPS = 250;
 
 export async function handover(run: Run) {
-  const p = await provision({ contract, path: `e2e-handover-${run.started.getTime()}`, owner: alice, issuer, royaltyBps: ROYALTY_BPS });
+  const p = await provision({ contract, name: `e2e-handover-${run.started.getTime()}`, owner: alice, issuer, royaltyBps: ROYALTY_BPS });
   run.lots.push({ id: p.id, address: p.address });
   run.record("provision", "Sablier stream pays the lot; title search clean; contract learns the address from MPC",
     `lot ${p.id} at ${p.address}, stream ${p.streamId}, ${JSON.stringify(p.title)}`, p.title.clean,

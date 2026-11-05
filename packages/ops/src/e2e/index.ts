@@ -3,14 +3,15 @@
  * step the security model promises, and writes `reports/e2e-<scenario>-<time>.md`.
  *
  *   bun run e2e                 all scenarios
- *   bun run e2e handover        one scenario
+ *   bun run e2e handover        one scenario (minting, handover, recovery)
  */
 import { contract } from "./context.ts";
 import { handover } from "./handover.ts";
+import { minting } from "./minting.ts";
 import { recovery } from "./recovery.ts";
 import { Run } from "./report.ts";
 
-const scenarios = { handover, recovery } as const;
+const scenarios = { minting, handover, recovery } as const;
 type Name = keyof typeof scenarios;
 
 const requested = Bun.argv.slice(2) as Name[];

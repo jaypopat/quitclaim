@@ -26,8 +26,8 @@ bun run verify
 
 - `bun run dev` serves the frontend with HMR.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
-- `bun run deploy-lot <prefix> [Latest|Safe]` deploys a lot contract to `<prefix>.<ADMIN_ACCOUNT>`.
-- `bun run e2e [handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
+- `bun run deploy-lot <prefix> [Latest|Safe]` deploys a lot contract to `<prefix>.<DEPLOYER_ACCOUNT>`.
+- `bun run e2e [minting|handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `minting` covers a front-run mint refused, a cancelable stream refused, and an MPC-proven mint. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
 - `bun run keeper [--watch]` settles every lot with unproven transactions: it tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
 
 Ops scripts need a root `.env`; see `.env.example`.
@@ -55,7 +55,13 @@ The issuer creates a Sablier Lockup v4 linear stream (`0xA65A1ecEf02C2B9BDc60495
 
 Quitclaim moves control of the recipient address, not the stream. The lot contract never signs Sablier calls. Anyone pulls the stream into the lot. The owner moves tokens out with a contract-built ERC-20 `transfer` of the token fixed at mint. So, while a lot is listed, outsiders can move value from the stream into the lot, but nothing can reduce the lot's total (still streaming plus held).
 
-Before buying, a title search reads from Base that the stream's recipient is the lot, that it is non-cancelable and non-transferable, and that its token matches the lot's.
+## Minting, with no admin
+
+An issuer creates the stream to a lot address in their own namespace: the contract sets every lot's path to `<issuer account>/<name>`. The issuer then calls `mint_proven(name, owner, royalty_bps, log)` with the stream's `CreateLockupLinearStream` log. The contract checks the emitter is the configured Sablier Lockup, the event is a linear-stream creation, the stream is non-cancelable and non-transferable, and its recipient is the address it derives for that path. It then asks MPC to attest that exact log at the contract's finality, passing the payload hash it computed (with MPC's own interface crate, pinned to the signer's revision). MPC answers only if Base has that log in a successful, canonical transaction; otherwise the mint rolls back. The lot's token and stream come from the attested log, not from the caller.
+
+Namespacing stops front-running: anyone watching Base could see a new stream, but minting it under their own account derives a different address, so the recipient check fails.
+
+A buyer can still re-run the title search from Base: recipient is the lot, non-cancelable, non-transferable, token matches.
 
 Quitclaim is not affiliated with or endorsed by Sablier.
 

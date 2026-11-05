@@ -56,9 +56,9 @@ pub struct Lot {
     pub address: Option<String>,
     /// The ERC-20 the lot holds, fixed at mint. The only contract a lot signs calls to.
     pub token: String,
-    /// The position that pays out to the lot address, recorded for buyers' title search.
-    /// Informational: the contract never signs calls to it.
-    pub source: Option<Source>,
+    /// The position that pays out to the lot address, proven from its creation log at mint.
+    /// The contract never signs calls to it.
+    pub source: Source,
     pub state: LotState,
     pub version: u32,
     /// Lowest nonce not yet proven consumed.
@@ -120,4 +120,13 @@ pub struct Source {
     pub kind: String,
     pub contract: String,
     pub id: U128,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Config {
+    pub signer: AccountId,
+    /// The Sablier Lockup a lot's source stream must come from.
+    pub lockup: String,
+    pub finality: Finality,
 }
