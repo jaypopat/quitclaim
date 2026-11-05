@@ -1,5 +1,5 @@
 import { Account, actions, teraToGas } from "near-api-js";
-import { config, type Finality, type Lot } from "@quitclaim/shared";
+import { config, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
 export type CallOutcome<T> = { tx: string; url: string; ok: true; value: T } | { tx: string; url: string; ok: false; error: string };
@@ -21,14 +21,14 @@ function failureMessage(status: unknown): string {
   return s.match(/Smart contract panicked: ([^"\\]+)/)?.[1] ?? s;
 }
 
-/** Calls a method and returns the outcome as data, including contract panics. */
-export async function call<T = unknown>(
+/** Calls a lot-contract method and returns the outcome as data, including contract panics. */
+export async function call<M extends keyof LotCalls>(
   signer: string,
   contractId: string,
-  method: string,
-  args: object,
+  method: M,
+  args: LotCalls[M]["args"],
   { deposit = 0n, tgas = 300 }: { deposit?: bigint; tgas?: number } = {},
-): Promise<CallOutcome<T>> {
+): Promise<CallOutcome<LotCalls[M]["result"]>> {
   const acct = await account(signer);
   const res = (await acct.signAndSendTransaction({
     receiverId: contractId,
@@ -40,10 +40,10 @@ export async function call<T = unknown>(
   if ("Failure" in res.status) return { tx, url: explorer(tx), ok: false, error: failureMessage(res.status) };
   const raw = res.status.SuccessValue as string | undefined;
   const text = raw ? Buffer.from(raw, "base64").toString() : "";
-  return { tx, url: explorer(tx), ok: true, value: (text ? JSON.parse(text) : undefined) as T };
+  return { tx, url: explorer(tx), ok: true, value: (text ? JSON.parse(text) : null) as LotCalls[M]["result"] };
 }
 
-export async function view<T>(contractId: string, method: string, args: object = {}): Promise<T> {
+export async function view<M extends keyof LotViews>(contractId: string, method: M, args: LotViews[M]["args"]): Promise<LotViews[M]["result"]> {
   const res = await fetch(config.near.rpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -62,12 +62,12 @@ export async function view<T>(contractId: string, method: string, args: object =
   });
   const body = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: unknown };
   if (!body.result?.result) throw new Error(`${method} failed: ${JSON.stringify(body.result?.error ?? body.error)}`);
-  return JSON.parse(Buffer.from(body.result.result).toString()) as T;
+  return JSON.parse(Buffer.from(body.result.result).toString());
 }
 
-export const getLot = (contractId: string, id: number) => view<Lot | null>(contractId, "get_lot", { id });
+export const getLot = (contractId: string, id: number) => view(contractId, "get_lot", { id });
 
-export async function getFinality(contractId: string): Promise<Finality> {
-  const [, , finality] = await view<[string, string, Finality]>(contractId, "get_config");
+export async function getFinality(contractId: string) {
+  const [, , finality] = await view(contractId, "get_config", {});
   return finality;
 }

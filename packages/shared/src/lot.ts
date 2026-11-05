@@ -1,34 +1,6 @@
-/** JSON shapes returned by `contracts/lot` views. Keep in sync with `contracts/lot/src/types.rs`. */
-export type LotState = "Minting" | "Active" | "Sealing" | "Clean";
-export type Kind = { Claim: { to: string } } | "Burn";
-export type Fees = { max_fee: string; max_prio: string };
+import type { Fees, Issued } from "./lot.gen.ts";
 
-export type Issued = {
-  seq: number;
-  nonce: number;
-  kind: Kind;
-  gas_limit: number;
-  fees: Fees;
-  tx_hash: string | null;
-  raw_tx: string | null;
-};
-
-export type Lot = {
-  owner: string;
-  issuer: string;
-  path: string;
-  address: string | null;
-  vesting: string;
-  state: LotState;
-  version: number;
-  next_nonce: number;
-  issued: Issued[];
-  next_seq: number;
-  sign_in_flight: boolean;
-  prove_in_flight: boolean;
-};
-
-export type Finality = "Latest" | "Safe" | "Finalized";
+export type * from "./lot.gen.ts";
 
 export const isBurn = (i: Issued) => i.kind === "Burn";
 
@@ -36,10 +8,10 @@ export const isBurn = (i: Issued) => i.kind === "Burn";
 export function nextFees(issued: Issued[], nonce: number, floor: { maxFee: bigint; maxPrio: bigint }): Fees {
   const atNonce = issued.filter((i) => i.nonce === nonce);
   const bump = (v: bigint) => (v * 11n) / 10n + 1n;
-  const prevFee = atNonce.reduce((m, i) => (BigInt(i.fees.max_fee) > m ? BigInt(i.fees.max_fee) : m), 0n);
-  const prevPrio = atNonce.reduce((m, i) => (BigInt(i.fees.max_prio) > m ? BigInt(i.fees.max_prio) : m), 0n);
-  let maxPrio = atNonce.length ? (bump(prevPrio) > floor.maxPrio ? bump(prevPrio) : floor.maxPrio) : floor.maxPrio;
-  let maxFee = atNonce.length ? (bump(prevFee) > floor.maxFee ? bump(prevFee) : floor.maxFee) : floor.maxFee;
-  if (maxFee < maxPrio) maxFee = maxPrio;
+  const max = (a: bigint, b: bigint) => (a > b ? a : b);
+  const prevFee = atNonce.reduce((m, i) => max(m, BigInt(i.fees.max_fee)), 0n);
+  const prevPrio = atNonce.reduce((m, i) => max(m, BigInt(i.fees.max_prio)), 0n);
+  const maxPrio = atNonce.length ? max(bump(prevPrio), floor.maxPrio) : floor.maxPrio;
+  const maxFee = max(atNonce.length ? max(bump(prevFee), floor.maxFee) : floor.maxFee, maxPrio);
   return { max_fee: maxFee.toString(), max_prio: maxPrio.toString() };
 }
