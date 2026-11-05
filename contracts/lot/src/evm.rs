@@ -1,3 +1,5 @@
+use alloy_primitives::U256;
+use alloy_sol_types::{sol, SolCall};
 use near_sdk::env;
 use omni_transaction::evm::types::Signature;
 use omni_transaction::evm::EVMTransaction;
@@ -21,40 +23,27 @@ const SECP256K1_HALF_N: [u8; 32] = [
     0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
 ];
 
-pub type Address = [u8; 20];
+pub use alloy_primitives::Address;
 
-pub fn parse_address(s: &str) -> Option<Address> {
-    let s = s.strip_prefix("0x")?;
-    hex::decode(s).ok()?.try_into().ok()
-}
 
-pub fn format_address(a: &Address) -> String {
-    format!("0x{}", hex::encode(a))
-}
-
-pub fn address_from_uncompressed(pk: &[u8; 64]) -> Address {
-    env::keccak256_array(pk)[12..].try_into().unwrap()
+sol! {
+    function transfer(address to, uint256 amount) returns (bool);
 }
 
 pub fn transfer_calldata(to: &Address, amount: u128) -> Vec<u8> {
-    let mut data = env::keccak256_array(b"transfer(address,uint256)")[..4].to_vec();
-    data.extend_from_slice(&[0u8; 12]);
-    data.extend_from_slice(to);
-    data.extend_from_slice(&[0u8; 16]);
-    data.extend_from_slice(&amount.to_be_bytes());
-    data
+    transferCall { to: *to, amount: U256::from(amount) }.abi_encode()
 }
 
 /// The exact EIP-1559 tx an issued entry stands for. `lot` is the burn's self-transfer target.
 pub fn build(issued: &Issued, lot: &Address, token: &Address) -> EVMTransaction {
     let (to, input) = match &issued.kind {
-        Kind::Transfer { to, amount } => (*token, transfer_calldata(&parse_address(to).unwrap(), amount.0)),
+        Kind::Transfer { to, amount } => (*token, transfer_calldata(&to.parse().unwrap(), amount.0)),
         Kind::Burn => (*lot, vec![]),
     };
     EVMTransaction {
         chain_id: CHAIN_ID,
         nonce: issued.nonce,
-        to: Some(to),
+        to: Some(to.into_array()),
         value: 0,
         input,
         gas_limit: issued.gas_limit as u128,
@@ -113,7 +102,7 @@ pub fn assemble(tx: &EVMTransaction, r: [u8; 32], s: [u8; 32], v: u8, lot: &Addr
     rs[..32].copy_from_slice(&r);
     rs[32..].copy_from_slice(&s);
     let pk = env::ecrecover(&signing_hash(tx), &rs, v, true)?;
-    if &address_from_uncompressed(&pk) != lot {
+    if &Address::from_raw_public_key(&pk) != lot {
         return None;
     }
     let strip = |b: &[u8]| b.iter().skip_while(|x| **x == 0).copied().collect::<Vec<u8>>();

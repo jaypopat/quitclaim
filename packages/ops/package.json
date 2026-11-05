@@ -8,6 +8,7 @@
   "dependencies": {
     "@quitclaim/shared": "workspace:*",
     "near-api-js": "^7.4.0",
+    "sablier": "4.2.1",
     "viem": "^2.57.16"
   }
 }

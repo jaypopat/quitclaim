@@ -19,7 +19,8 @@
     "lot-address": "bun packages/ops/src/lot-address.ts",
     "abi": "bun packages/shared/scripts/gen-abi.ts",
     "e2e": "bun packages/ops/src/e2e/index.ts",
-    "keeper": "bun packages/ops/src/keeper.ts"
+    "keeper": "bun packages/ops/src/keeper.ts",
+    "freeze": "bun packages/ops/src/freeze.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -10,7 +10,8 @@ mod tests;
 
 use near_contract_standards::non_fungible_token::events::{NftMint, NftTransfer};
 use near_sdk::json_types::U128;
-use near_sdk::serde_json::Value;
+use near_mpc_contract_interface::types::{PublicKey, SignatureResponse};
+use near_sdk::serde_json::{self, Value};
 use near_sdk::store::{IterableMap, LookupMap, LookupSet};
 use near_sdk::{
     env, log, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
@@ -28,7 +29,7 @@ const DERIVED_CALLBACK_GAS: Gas = Gas::from_tgas(90);
 #[derive(PanicOnDefault)]
 pub struct Contract {
     signer: AccountId,
-    lockup: evm::Address,
+    lockup: [u8; 20],
     finality: Finality,
     lots: IterableMap<LotId, Lot>,
     paths: LookupSet<String>,
@@ -50,7 +51,7 @@ impl Contract {
     }
 
     fn lot_address(lot: &Lot) -> evm::Address {
-        evm::parse_address(lot.address.as_deref().expect("lot has no address")).unwrap()
+        lot.address.as_deref().expect("lot has no address").parse().unwrap()
     }
 
     fn require_owner(lot: &Lot) {
@@ -64,7 +65,7 @@ impl Contract {
             env::panic_str(e);
         }
         let item = Issued { seq: lot.next_seq, nonce, kind, gas_limit, fees, tx_hash: None, raw_tx: None };
-        let token = evm::parse_address(&lot.token).unwrap();
+        let token = lot.token.parse::<evm::Address>().unwrap();
         let payload = evm::signing_hash(&evm::build(&item, &Self::lot_address(&lot), &token));
         let seq = item.seq;
         lot.issued.push(item);
@@ -74,7 +75,7 @@ impl Contract {
         self.lots.insert(id, lot);
 
         Promise::new(self.signer.clone())
-            .function_call("sign".to_string(), mpc::sign_args(&path, &payload), mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
+            .function_call(mpc::SIGN.to_string(), mpc::sign_args(&path, &payload), mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
             .then(Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS).on_signed(id, seq))
     }
 
@@ -94,7 +95,7 @@ impl Contract {
     pub fn new(signer: AccountId, lockup: String, finality: Finality) -> Self {
         Self {
             signer,
-            lockup: evm::parse_address(&lockup).unwrap_or_else(|| env::panic_str("lockup must be a 0x address")),
+            lockup: lockup.parse::<evm::Address>().unwrap_or_else(|_| env::panic_str("lockup must be a 0x address")).into_array(),
             finality,
             lots: IterableMap::new(b"l"),
             paths: LookupSet::new(b"p"),
@@ -116,8 +117,9 @@ impl Contract {
             (1..=MAX_NAME_LEN).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)),
             "name must be 1-64 chars of [A-Za-z0-9._-]"
         );
-        let stream = source::decode(&log, &self.lockup).unwrap_or_else(|e| env::panic_str(e));
-        source::verify_args(&log, self.finality).unwrap_or_else(|e| env::panic_str(e));
+        let evm_log = log.to_evm_log().unwrap_or_else(|e| env::panic_str(e));
+        let stream = source::decode(&evm_log, &self.lockup.into()).unwrap_or_else(|e| env::panic_str(e));
+        source::verify_request(&evm_log, self.finality).unwrap_or_else(|e| env::panic_str(e));
         let before = env::storage_usage();
         let issuer = env::predecessor_account_id();
         let path = format!("{issuer}/{name}");
@@ -131,10 +133,10 @@ impl Contract {
                 issuer,
                 path: path.clone(),
                 address: None,
-                token: evm::format_address(&stream.token),
+                token: format!("{:#x}", stream.token),
                 source: Source {
                     kind: source::SOURCE_KIND.to_string(),
-                    contract: evm::format_address(&self.lockup),
+                    contract: format!("{:#x}", evm::Address::from(self.lockup)),
                     id: U128(stream.id),
                 },
                 state: LotState::Minting,
@@ -156,15 +158,15 @@ impl Contract {
         }
         Promise::new(self.signer.clone())
             .function_call(
-                "derived_public_key".to_string(),
-                mpc::derived_key_args(&path, env::current_account_id().as_str()),
+                mpc::DERIVED_PUBLIC_KEY.to_string(),
+                mpc::derived_key_args(&path, &env::current_account_id()),
                 NearToken::from_yoctonear(0),
                 Gas::from_tgas(10),
             )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(DERIVED_CALLBACK_GAS)
-                    .on_derived(id, evm::format_address(&stream.recipient), log, storage),
+                    .on_derived(id, format!("{:#x}", stream.recipient), log, storage),
             )
     }
 
@@ -177,15 +179,15 @@ impl Contract {
         storage: NearToken,
         #[callback_result] key: Result<String, PromiseError>,
     ) -> PromiseOrValue<Option<MintedLot>> {
-        let Some(pk) = key.ok().as_deref().and_then(mpc::parse_derived_key) else {
+        let Some(pk) = key.ok().and_then(|k| k.parse::<PublicKey>().ok()).and_then(mpc::derived_key) else {
             return PromiseOrValue::Value(self.roll_back(id, "derivation failed", storage));
         };
-        let address = evm::format_address(&evm::address_from_uncompressed(&pk));
+        let address = format!("{:#x}", evm::Address::from_raw_public_key(&pk));
         if address != recipient {
             return PromiseOrValue::Value(self.roll_back(id, "the stream does not pay this lot's address", storage));
         }
-        let args = match source::verify_args(&log, self.finality) {
-            Ok(args) => args,
+        let args = match log.to_evm_log().and_then(|l| source::verify_request(&l, self.finality)) {
+            Ok(request) => mpc::verify_args(request),
             Err(e) => return PromiseOrValue::Value(self.roll_back(id, e, storage)),
         };
         let mut lot = self.lot(id);
@@ -193,7 +195,7 @@ impl Contract {
         self.lots.insert(id, lot);
         PromiseOrValue::Promise(
             Promise::new(self.signer.clone())
-                .function_call("verify_foreign_transaction".to_string(), args, mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
+                .function_call(mpc::VERIFY_FOREIGN_TRANSACTION.to_string(), args, mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
                 .then(Self::ext(env::current_account_id()).with_static_gas(CALLBACK_GAS).on_mint_verified(id, storage)),
         )
     }
@@ -218,7 +220,7 @@ impl Contract {
         let lot = self.lot(id);
         Self::require_owner(&lot);
         require!(lot.state == LotState::Active, "lot is not Active");
-        require!(evm::parse_address(&to).is_some(), "to must be a 0x address");
+        require!(to.parse::<evm::Address>().is_ok(), "to must be a 0x address");
         require!(amount.0 > 0, "amount must be positive");
         require!((evm::BURN_GAS_LIMIT..=evm::MAX_TRANSFER_GAS_LIMIT).contains(&gas_limit), "gas limit out of range");
         let nonce = lot.next_nonce;
@@ -294,13 +296,13 @@ impl Contract {
         let mut lot = self.lot(id);
         lot.sign_in_flight = false;
         let lot_addr = Self::lot_address(&lot);
-        let token = evm::parse_address(&lot.token).unwrap();
+        let token = lot.token.parse::<evm::Address>().unwrap();
         let Some(pos) = lot.issued.iter().position(|i| i.seq == seq) else {
             log!("lot {} seq {} already cleared by a proof", id, seq);
             self.lots.insert(id, lot);
             return None;
         };
-        let signed = sig.ok().and_then(mpc::parse_signature).and_then(|(r, s, v)| {
+        let signed = sig.ok().and_then(|v| serde_json::from_value::<SignatureResponse>(v).ok()).and_then(mpc::parse_signature).and_then(|(r, s, v)| {
             evm::assemble(&evm::build(&lot.issued[pos], &lot_addr, &token), r, s, v, &lot_addr)
         });
         let raw = signed.map(|t| {
@@ -319,7 +321,7 @@ impl Contract {
     pub fn register_signature(&mut self, id: LotId, seq: u32, r: String, s: String, v: u8) -> String {
         let mut lot = self.lot(id);
         let lot_addr = Self::lot_address(&lot);
-        let token = evm::parse_address(&lot.token).unwrap();
+        let token = lot.token.parse::<evm::Address>().unwrap();
         let pos = lot.issued.iter().position(|i| i.seq == seq).unwrap_or_else(|| env::panic_str("no such issued tx"));
         let word = |h: &str| -> [u8; 32] {
             hex::decode(h.trim_start_matches("0x")).ok().and_then(|b| b.try_into().ok())
@@ -343,11 +345,12 @@ impl Contract {
         let lot = self.lot(id);
         let issued = lot.issued.iter().find(|i| i.seq == seq).unwrap_or_else(|| env::panic_str("no such issued tx"));
         let hash = issued.tx_hash.clone().unwrap_or_else(|| env::panic_str("issued tx has no recorded signature"));
+        let tx: [u8; 32] = hex::decode(hash.trim_start_matches("0x")).ok().and_then(|b| b.try_into().ok()).expect("recorded hashes are 32-byte hex");
         let nonce = issued.nonce;
         Promise::new(self.signer.clone())
             .function_call(
-                "verify_foreign_transaction".to_string(),
-                mpc::verify_args(&hash, self.finality.as_str()),
+                mpc::VERIFY_FOREIGN_TRANSACTION.to_string(),
+                mpc::verify_args(mpc::mined_request(tx, self.finality)),
                 mpc::REQUEST_DEPOSIT,
                 mpc::REQUEST_GAS,
             )
@@ -377,7 +380,7 @@ impl Contract {
     }
 
     pub fn get_config(&self) -> Config {
-        Config { signer: self.signer.clone(), lockup: evm::format_address(&self.lockup), finality: self.finality }
+        Config { signer: self.signer.clone(), lockup: format!("{:#x}", evm::Address::from(self.lockup)), finality: self.finality }
     }
 }
 

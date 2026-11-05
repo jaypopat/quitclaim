@@ -1,7 +1,8 @@
 /**
  * The handover: Alice withdraws, keeps a signed withdrawal, seals; the burn is proven; her retained
  * withdrawal is rejected by Base; an outsider pulls the stream while the lot is listed; Bob buys with
- * an issuer royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself.
+ * an issuer royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
+ * to Carol: three owners, one address.
  */
 import { isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
@@ -9,7 +10,7 @@ import { settle } from "../keeper.ts";
 import { buy, list, position, provision, pullSource, requestTransfer, seal, withdraw } from "../lot.ts";
 import { view } from "../near.ts";
 import * as sablier from "../sablier.ts";
-import { alice, aliceEvm, bob, bobEvm, contract, issuer, keeper, lotOf, raw, transferTitle, withdrawTo } from "./context.ts";
+import { alice, aliceEvm, bob, bobEvm, carol, contract, issuer, keeper, lotOf, raw, transferTitle, withdrawTo } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
 
 const PRICE = 10n ** 23n;
@@ -99,4 +100,17 @@ export async function handover(run: Run) {
   run.record("bob withdraws", "bob's withdrawal pays bob; alice's balance unchanged; the stream still pays the same address",
     `bob holds ${bobTokens}, alice ${aliceBefore} -> ${aliceAfter}, title clean=${title.clean}`,
     wb.req.ok && bobTokens > 0n && aliceBefore === aliceAfter && title.clean, [...wb.links, ...settleLinks(sb.steps)]);
+
+  const issuerBeforeResale = BigInt(await view(contract, "proceeds_of", { account_id: issuer }));
+  const bs = await seal(contract, bob, id);
+  const bobLot = await lotOf(id);
+  const bl = await list(contract, bob, id, PRICE);
+  const resale = await buy(contract, carol, id);
+  const third = await lotOf(id);
+  const issuerGotAgain = BigInt(await view(contract, "proceeds_of", { account_id: issuer })) - issuerBeforeResale;
+  const resold = await sablier.titleSearch(p.streamId, p.address, p.token);
+  run.record("bob resells to carol", "Bob's lot has nothing outstanding, so sealing is Clean at once; Carol buys; three owners, one address; the issuer earns again",
+    `sealed ${bobLot.state}; owner ${third.owner} v${third.version}; address ${third.address}; issuer +${issuerGotAgain}; title clean=${resold.clean}`,
+    bs.ok && bobLot.state === "Clean" && bl.ok && resale.ok && third.owner === carol && third.address === p.address.toLowerCase() && issuerGotAgain === royalty && resold.clean,
+    [bs.url, bl.url, resale.url]);
 }

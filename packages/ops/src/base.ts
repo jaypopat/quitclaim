@@ -1,8 +1,8 @@
 import {
+  erc20Abi,
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
-  fallback,
   http,
   keccak256,
   parseTransaction,
@@ -19,15 +19,10 @@ const GAS_PRICE_ORACLE: Address = "0x420000000000000000000000000000000000000F";
 const oracleAbi = [
   { type: "function", name: "getL1Fee", stateMutability: "view", inputs: [{ type: "bytes" }], outputs: [{ type: "uint256" }] },
 ] as const;
-const erc20Abi = [
-  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
-] as const;
 
-const transport = () => fallback(config.evm.rpcUrls.map((url) => http(url)));
-export const pub = createPublicClient({ chain: baseSepolia, transport: transport() });
+export const pub = createPublicClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl) });
 export const funderAccount = () => privateKeyToAccount(env.funderKey());
-export const wallet = () => createWalletClient({ chain: baseSepolia, transport: transport(), account: funderAccount() });
+export const wallet = () => createWalletClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl), account: funderAccount() });
 const funder = wallet;
 
 export const txUrl = (hash: string) => `${config.evm.explorer}/tx/${hash}`;
