@@ -76,9 +76,21 @@ fn token(id: LotId, lot: &Lot, item: Item) -> Token {
     }
 }
 
+type Holding<'a> = (LotId, &'a Lot, Item, &'a AccountId);
+
+/// near-contract-standards' enumeration bounds, checked on the wide integers before narrowing:
+/// on wasm32 a `usize` cast would wrap an offset of 2^32 to the first page.
+fn page(held: Vec<Holding>, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
+    let start = from_index.map_or(0, |i| i.0);
+    require!(held.len() as u128 >= start, "Out of bounds, please use a smaller from_index.");
+    let limit = limit.map_or(usize::MAX, |l| usize::try_from(l).unwrap_or(usize::MAX));
+    require!(limit != 0, "Cannot provide limit of 0.");
+    held.into_iter().skip(start as usize).take(limit).map(|(id, l, item, _)| token(id, l, item)).collect()
+}
+
 impl Contract {
     /// Every live token with its holder: each minted lot's title, then its lease while one is live.
-    fn holdings(&self) -> impl Iterator<Item = (LotId, &Lot, Item, &AccountId)> {
+    fn holdings(&self) -> impl Iterator<Item = Holding<'_>> {
         self.lots.iter().filter(|(_, l)| is_minted(l)).flat_map(|(id, l)| {
             let lease = Self::live_lease(l).map(|lease| (*id, l, Item::Lease, &lease.holder));
             std::iter::once((*id, l, Item::Title, &l.owner)).chain(lease)
@@ -132,11 +144,7 @@ impl Contract {
     }
 
     pub fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
-        self.holdings()
-            .skip(from_index.map_or(0, |i| i.0 as usize))
-            .take(limit.map_or(usize::MAX, |l| l as usize))
-            .map(|(id, l, item, _)| token(id, l, item))
-            .collect()
+        page(self.holdings().collect(), from_index, limit)
     }
 
     pub fn nft_supply_for_owner(&self, account_id: AccountId) -> U128 {
@@ -144,11 +152,6 @@ impl Contract {
     }
 
     pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
-        self.holdings()
-            .filter(|(.., holder)| **holder == account_id)
-            .skip(from_index.map_or(0, |i| i.0 as usize))
-            .take(limit.map_or(usize::MAX, |l| l as usize))
-            .map(|(id, l, item, _)| token(id, l, item))
-            .collect()
+        page(self.holdings().filter(|(.., holder)| **holder == account_id).collect(), from_index, limit)
     }
 }

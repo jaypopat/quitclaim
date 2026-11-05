@@ -87,16 +87,6 @@ pub enum Finality {
     Finalized,
 }
 
-impl Finality {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Finality::Latest => "Latest",
-            Finality::Safe => "Safe",
-            Finality::Finalized => "Finalized",
-        }
-    }
-}
-
 #[near(serializers = [json])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MintedLot {

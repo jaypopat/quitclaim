@@ -50,13 +50,16 @@ impl Contract {
     }
 
     /// The lot as a call should see it: a lease that ran out while the lot sat Clean ends first.
-    pub(crate) fn load(&mut self, id: LotId) -> Lot {
-        let mut lot = self.lot(id);
-        if Self::lease_over(&lot) {
-            Self::close_lease(id, &mut lot);
-            self.lots.insert(id, lot.clone());
+    pub(crate) fn load_mut(&mut self, id: LotId) -> &mut Lot {
+        let lot = self.lot_mut(id);
+        if Self::lease_over(lot) {
+            Self::close_lease(id, lot);
         }
         lot
+    }
+
+    pub(crate) fn load(&mut self, id: LotId) -> Lot {
+        self.load_mut(id).clone()
     }
 
     pub(crate) fn close_lease(id: LotId, lot: &mut Lot) {
@@ -93,7 +96,7 @@ impl Contract {
 impl Contract {
     /// Owner offers a Clean lot for lease until `ends_at_ms`. Bound to the version, like a listing.
     pub fn offer_lease(&mut self, id: LotId, price: U128, ends_at_ms: u64) {
-        let mut lot = self.load(id);
+        let lot = self.load_mut(id);
         require!(lot.lease.is_none(), "lot is already leased");
         require!(env::predecessor_account_id() == lot.owner, "not the lot owner");
         require!(lot.state == LotState::Clean, "lot is not Clean");
@@ -101,7 +104,6 @@ impl Contract {
         require!(ends_at_ms > env::block_timestamp_ms(), "the lease must end in the future");
         lot.listing = None;
         lot.lease_offer = Some(LeaseOffer { price, ends_at_ms, version: lot.version });
-        self.lots.insert(id, lot);
     }
 
     /// Pays the owner and the minter royalty in state, mints the lease token and hands the caller control.
@@ -131,19 +133,17 @@ impl Contract {
 
     /// The lease holder hands control back early. Only while Clean, like expiry.
     pub fn surrender_lease(&mut self, id: LotId) {
-        let mut lot = self.load(id);
-        require!(env::predecessor_account_id() == *Self::holder(&lot, Item::Lease), "not the lease holder");
+        let lot = self.load_mut(id);
+        require!(env::predecessor_account_id() == *Self::holder(lot, Item::Lease), "not the lease holder");
         require!(lot.state == LotState::Clean, "lot is not Clean");
-        Self::close_lease(id, &mut lot);
-        self.lots.insert(id, lot);
+        Self::close_lease(id, lot);
     }
 
     /// Anyone closes a lease that ran out while its lot was already Clean.
     pub fn end_lease(&mut self, id: LotId) {
-        let mut lot = self.lot(id);
-        require!(Self::lease_over(&lot), "no lease has run out on a Clean lot");
-        Self::close_lease(id, &mut lot);
-        self.lots.insert(id, lot);
+        let lot = self.lot_mut(id);
+        require!(Self::lease_over(lot), "no lease has run out on a Clean lot");
+        Self::close_lease(id, lot);
     }
 
     pub fn lease_budget(&self, id: LotId) -> LeaseBudget {

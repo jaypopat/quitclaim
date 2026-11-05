@@ -27,7 +27,7 @@
     "freeze": "bun packages/ops/src/freeze.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "1.4.4"
   },
   "peerDependencies": {
     "typescript": "^7"

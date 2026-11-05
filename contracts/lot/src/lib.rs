@@ -54,6 +54,10 @@ impl Contract {
         self.lots.get(&id).cloned().unwrap_or_else(|| env::panic_str("no such lot"))
     }
 
+    fn lot_mut(&mut self, id: LotId) -> &mut Lot {
+        self.lots.get_mut(&id).unwrap_or_else(|| env::panic_str("no such lot"))
+    }
+
     fn lot_address(lot: &Lot) -> evm::Address {
         lot.address.as_deref().expect("lot has no address").parse().unwrap()
     }
@@ -124,6 +128,7 @@ impl Contract {
         let evm_log = log.to_evm_log().unwrap_or_else(|e| env::panic_str(e));
         let stream = source::decode(&evm_log, &self.lockup.into()).unwrap_or_else(|e| env::panic_str(e));
         source::verify_request(&evm_log, self.finality).unwrap_or_else(|e| env::panic_str(e));
+        let recipient = format!("{:#x}", stream.recipient);
         let before = env::storage_usage();
         let minter = env::predecessor_account_id();
         let path = format!("{minter}/{name}");
@@ -156,7 +161,10 @@ impl Contract {
                 lease: None,
             },
         );
-        let storage = env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128);
+        self.lots.flush();
+        // A lot that survives the mint has the recipient as its address, which `on_derived` stores later.
+        let address_bytes = near_sdk::borsh::object_length(&recipient).unwrap() as u64;
+        let storage = env::storage_byte_cost().saturating_mul((env::storage_usage() - before + address_bytes) as u128);
         let needed = storage.saturating_add(mpc::REQUEST_DEPOSIT);
         let attached = env::attached_deposit();
         require!(attached >= needed, format!("attach at least {} yoctoNEAR: storage plus the MPC deposit", needed.as_yoctonear()));
@@ -173,7 +181,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(DERIVED_CALLBACK_GAS)
-                    .on_derived(id, format!("{:#x}", stream.recipient), log, storage),
+                    .on_derived(id, recipient, log, storage),
             )
     }
 
@@ -197,9 +205,7 @@ impl Contract {
             Ok(request) => mpc::verify_args(request),
             Err(e) => return PromiseOrValue::Value(self.roll_back(id, e, storage)),
         };
-        let mut lot = self.lot(id);
-        lot.address = Some(address);
-        self.lots.insert(id, lot);
+        self.lot_mut(id).address = Some(address);
         PromiseOrValue::Promise(
             Promise::new(self.signer.clone())
                 .function_call(mpc::VERIFY_FOREIGN_TRANSACTION.to_string(), args, mpc::REQUEST_DEPOSIT, mpc::REQUEST_GAS)
@@ -213,11 +219,10 @@ impl Contract {
         if r.is_err() {
             return self.roll_back(id, "MPC did not attest the creation log", storage);
         }
-        let mut lot = self.lot(id);
+        let lot = self.lot_mut(id);
         let address = lot.address.clone().expect("set in on_derived");
         lot.state = LotState::Active;
         NftMint { owner_id: &lot.owner, token_ids: &[&id.to_string()], memo: Some(&address) }.emit();
-        self.lots.insert(id, lot);
         Some(MintedLot { id, address })
     }
 
@@ -289,9 +294,9 @@ impl Contract {
     /// The controller returns the lot to Active. Bumping the version cancels anything bound to the old one.
     /// Refused once the lease has run out, so expiry always reaches Clean.
     pub fn unseal(&mut self, id: LotId) {
-        let mut lot = self.load(id);
-        Self::require_controller(&lot);
-        require!(!Self::lease_run_out(&lot), "the lease has run out");
+        let lot = self.load_mut(id);
+        Self::require_controller(lot);
+        require!(!Self::lease_run_out(lot), "the lease has run out");
         require!(matches!(lot.state, LotState::Sealing | LotState::Clean), "lot is not Sealing or Clean");
         require!(
             lot.issued.iter().all(|i| i.nonce == lot.next_nonce),
@@ -301,18 +306,16 @@ impl Contract {
         lot.version += 1;
         lot.listing = None;
         lot.lease_offer = None;
-        self.lots.insert(id, lot);
     }
 
     #[private]
     pub fn on_signed(&mut self, id: LotId, seq: u32, #[callback_result] sig: Result<Value, PromiseError>) -> Option<String> {
-        let mut lot = self.lot(id);
+        let lot = self.lot_mut(id);
         lot.sign_in_flight = false;
-        let lot_addr = Self::lot_address(&lot);
+        let lot_addr = Self::lot_address(lot);
         let token = lot.token.parse::<evm::Address>().unwrap();
         let Some(pos) = lot.issued.iter().position(|i| i.seq == seq) else {
             log!("lot {} seq {} already cleared by a proof", id, seq);
-            self.lots.insert(id, lot);
             return None;
         };
         let signed = sig.ok().and_then(|v| serde_json::from_value::<SignatureResponse>(v).ok()).and_then(mpc::parse_signature).and_then(|(r, s, v)| {
@@ -326,14 +329,13 @@ impl Contract {
         if raw.is_none() {
             log!("lot {} seq {} has no valid signature recorded; it stays issued", id, seq);
         }
-        self.lots.insert(id, lot);
         raw
     }
 
     /// Fallback when `on_signed` recorded nothing: anyone submits the public MPC signature.
     pub fn register_signature(&mut self, id: LotId, seq: u32, r: String, s: String, v: u8) -> String {
-        let mut lot = self.lot(id);
-        let lot_addr = Self::lot_address(&lot);
+        let lot = self.lot_mut(id);
+        let lot_addr = Self::lot_address(lot);
         let token = lot.token.parse::<evm::Address>().unwrap();
         let pos = lot.issued.iter().position(|i| i.seq == seq).unwrap_or_else(|| env::panic_str("no such issued tx"));
         let word = |h: &str| -> [u8; 32] {
@@ -345,7 +347,6 @@ impl Contract {
             .unwrap_or_else(|| env::panic_str("signature does not recover to the lot address"));
         lot.issued[pos].tx_hash = Some(signed.hash);
         lot.issued[pos].raw_tx = Some(signed.raw.clone());
-        self.lots.insert(id, lot);
         signed.raw
     }
 
@@ -373,18 +374,17 @@ impl Contract {
     /// One mined tx at `nonce` proves every nonce up to it consumed.
     #[private]
     pub fn on_proved(&mut self, id: LotId, nonce: u64, #[callback_result] r: Result<Value, PromiseError>) -> bool {
-        let mut lot = self.lot(id);
+        let lot = self.lot_mut(id);
         let consumed = r.is_ok() && nonce >= lot.next_nonce;
         if consumed {
             lot.issued.retain(|i| i.nonce > nonce);
             lot.next_nonce = nonce + 1;
             if lot.state == LotState::Sealing && lot.issued.is_empty() {
-                Self::mark_clean(id, &mut lot);
+                Self::mark_clean(id, lot);
             }
         } else {
             log!("lot {} nonce {} not proven", id, nonce);
         }
-        self.lots.insert(id, lot);
         consumed
     }
 

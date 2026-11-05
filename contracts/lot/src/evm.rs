@@ -1,5 +1,6 @@
 use alloy_primitives::U256;
 use alloy_sol_types::{sol, SolCall};
+use std::mem::discriminant;
 use near_sdk::env;
 use omni_transaction::evm::types::Signature;
 use omni_transaction::evm::EVMTransaction;
@@ -16,15 +17,10 @@ pub const BURN_PRIO_CAP: u128 = 2 * TRANSFER_PRIO_CAP;
 /// With a nonzero floor, the 10% bump makes every replacement strictly pricier, so the number of
 /// txs at one nonce is bounded by the caps; the explicit limit bounds contract-paid storage.
 pub const MIN_FEE: u128 = 1_000_000;
+/// Per kind, so transfer attempts can never use up the burns a seal or rescue needs.
 pub const MAX_ISSUED_PER_NONCE: usize = 16;
 
-const SECP256K1_HALF_N: [u8; 32] = [
-    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
-];
-
 pub use alloy_primitives::Address;
-
 
 sol! {
     function transfer(address to, uint256 amount) returns (bool);
@@ -74,8 +70,11 @@ pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Res
         return Err("priority fee above max fee");
     }
     let at_nonce = prior.iter().filter(|i| i.nonce == nonce);
-    if at_nonce.clone().count() >= MAX_ISSUED_PER_NONCE {
-        return Err("too many txs issued at this nonce");
+    if at_nonce.clone().filter(|i| discriminant(&i.kind) == discriminant(kind)).count() >= MAX_ISSUED_PER_NONCE {
+        return Err(match kind {
+            Kind::Transfer { .. } => "too many transfers issued at this nonce",
+            Kind::Burn => "too many burns issued at this nonce",
+        });
     }
     let prev_fee = at_nonce.clone().map(|i| i.fees.max_fee.0).max();
     let prev_prio = at_nonce.map(|i| i.fees.max_prio.0).max();
@@ -94,8 +93,9 @@ pub struct SignedTx {
 
 /// Accepts (r, s, v) only when it recovers to `lot` over `tx`. Without this, anyone could sign
 /// the same payload with their own key, mine it from their own address and fake a consumed nonce.
+/// `ecrecover`'s malleability flag rejects high s. NEAR accepts recovery ids up to 3, but yParity is 0 or 1.
 pub fn assemble(tx: &EVMTransaction, r: [u8; 32], s: [u8; 32], v: u8, lot: &Address) -> Option<SignedTx> {
-    if v > 1 || s > SECP256K1_HALF_N {
+    if v > 1 {
         return None;
     }
     let mut rs = [0u8; 64];

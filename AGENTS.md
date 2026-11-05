@@ -53,7 +53,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 - `sign` and `verify_foreign_transaction` each need 1 yoctoNEAR and at least 15 Tgas. Ethereum isn't whitelisted for verification; Base is. Every failed verification is a silent ~115 s timeout.
 - Base charges an L1 fee on top of L2 gas. Estimate gas per tx; never hardcode it.
-- One RPC per chain in `packages/shared/src/config.ts`. Local DNS blocks some hosts; these resolve here.
+- RPCs live in `packages/shared/src/config.ts`. Base has one. NEAR has two: `rpcUrl` for all live traffic, and `archivalRpcUrl` only where history is needed (the heist's transaction and receipt lookups). FastNEAR's archival tier rate-limits live e2e traffic with HTTP 429, and the regular node prunes old receipts. Local DNS blocks some hosts; these resolve here.
 - The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
 - A call that returns a `Promise` must be added to `resolvesVia` in `packages/shared/scripts/gen-abi.ts`, or `bun run abi` fails.
 - `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.

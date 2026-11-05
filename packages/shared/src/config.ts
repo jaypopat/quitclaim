@@ -1,7 +1,9 @@
 export const config = {
   near: {
-    networkId: "testnet",
-    rpcUrl: "https://archival-rpc.testnet.fastnear.com",
+    rpcUrl: "https://rpc.testnet.fastnear.com",
+    /** Only for history the regular node has pruned, such as the heist's old transactions. */
+    archivalRpcUrl: "https://archival-rpc.testnet.fastnear.com",
+    explorer: "https://testnet.nearblocks.io",
     mpcSigner: "v1.signer-prod.testnet",
     signDomain: 0,
     foreignTxDomain: 3,

@@ -12,10 +12,8 @@ import { isBurn, type Issued, type Lot } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import { env } from "./env.ts";
 import { endLease, leaseRunOut, mustLot, rebump, rescue, seal } from "./lot.ts";
-import { call, getFinality, view, type CallOutcome } from "./near.ts";
+import { call, getFinality, view, YOCTO, type CallOutcome } from "./near.ts";
 import { pendingLots } from "./pending.ts";
-
-const YOCTO = 1n;
 
 export type SettleStep =
   | { kind: "seal"; outcome: CallOutcome<unknown> }
@@ -149,7 +147,7 @@ function pending(contract: string) {
 
 if (import.meta.main) {
   const contract = env.lotContract();
-  const prover = process.env.KEEPER_ACCOUNT ?? env.deployer();
+  const prover = env.keeper();
   const watch = Bun.argv.includes("--watch");
   do {
     for await (const id of pending(contract)) {

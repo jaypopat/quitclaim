@@ -2,12 +2,12 @@ import type { Address, Hex } from "viem";
 import { fetchLotAddress, nextFees, type Fees, type Lot, type LotCalls } from "@quitclaim/shared";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
-import { call, getFinality, getLot, view, type CallOutcome } from "./near.ts";
+import { nearToYocto } from "near-api-js";
+import { call, getFinality, getLot, view, YOCTO, type CallOutcome } from "./near.ts";
 import { env } from "./env.ts";
 
-const YOCTO = 1n;
 /** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
-export const MINT_DEPOSIT = 50_000_000_000_000_000_000_000n;
+export const MINT_DEPOSIT = nearToYocto("0.05");
 
 export type Provisioned = {
   id: number;

@@ -43,7 +43,7 @@ For a release, commit the source and run `bun run build:release`. This uses Dock
 
 Ops scripts need a root `.env`; see `.env.example`.
 
-The handover scenario uses `MINTER_ACCOUNT` for the lot's minter and royalty beneficiary, defaulting to `DEPLOYER_ACCOUNT`.
+Every account in `.env.example` is required. The handover scenario uses `MINTER_ACCOUNT` for the lot's minter and royalty beneficiary, and `KEEPER_ACCOUNT` proves, rebumps and rescues for the keeper and e2e.
 
 Public lot views now return `minter` in place of `issuer`, and lots store their stream schedule and lease. Use a fresh deployment built from this revision with the updated ops scripts.
 

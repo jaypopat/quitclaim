@@ -5,7 +5,7 @@
     "": {
       "name": "quitclaim",
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "1.4.4",
       },
       "peerDependencies": {
         "typescript": "^7",
@@ -27,7 +27,7 @@
       "name": "@quitclaim/ops",
       "dependencies": {
         "@quitclaim/shared": "workspace:*",
-        "near-api-js": "^7.4.0",
+        "near-api-js": "7.4.0",
         "sablier": "4.2.1",
         "viem": "^2.57.16",
       },

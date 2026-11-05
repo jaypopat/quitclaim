@@ -5,6 +5,7 @@
 //! Sablier stream 112's creation log, whose payload hash MPC attested in spike 12.
 
 use near_sdk::json_types::U128;
+use near_sdk::mock::MockAction;
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::serde_json::{self, json, Value};
 use near_sdk::{testing_env, AccountId, NearToken, PromiseError};
@@ -548,22 +549,71 @@ fn zero_fees_are_rejected() {
     let _ = c.rebump(0, 0, fees(0, 0));
 }
 
-#[test]
-#[should_panic(expected = "too many txs issued at this nonce")]
-fn txs_per_nonce_are_bounded() {
-    let mut c = sealing_with_burn();
-    let (mut fee, mut prio) = (55_000_000u128, 1_100_000u128);
-    for seq in 2..evm::MAX_ISSUED_PER_NONCE as u32 {
-        fee = fee * 11 / 10 + 1;
-        prio = prio * 11 / 10 + 1;
-        call(bob(), 1);
-        let _ = c.rebump(0, 0, fees(fee, prio));
-        as_contract();
-        let _ = c.on_signed(0, seq, Err(PromiseError::Failed));
+fn bump(f: Fees) -> Fees {
+    fees(f.max_fee.0 * 11 / 10 + 1, f.max_prio.0 * 11 / 10 + 1)
+}
+
+/// MPC fails to sign the request just issued, so it stays issued with no signature.
+fn sign_fails(c: &mut Contract) {
+    let seq = c.get_lot(0).unwrap().next_seq - 1;
+    as_contract();
+    assert_eq!(c.on_signed(0, seq, Err(PromiseError::Failed)), None);
+}
+
+/// Alice uses up the transfers at nonce 0, none of them signed. Returns the next valid fees.
+fn failed_transfers() -> (Contract, Fees) {
+    let mut c = active_lot();
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+        call(alice(), 1);
+        let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
+        sign_fails(&mut c);
+        f = bump(f);
     }
-    assert_eq!(c.get_lot(0).unwrap().issued.len(), evm::MAX_ISSUED_PER_NONCE);
+    (c, f)
+}
+
+/// After the failed transfers, Alice seals and anyone rebumps the burn until nonce 0 holds every burn it may.
+fn burns_used_up() -> (Contract, Fees) {
+    let (mut c, mut f) = failed_transfers();
+    call(alice(), 1);
+    let _ = c.seal(0, f);
+    sign_fails(&mut c);
+    for _ in 1..evm::MAX_ISSUED_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.rebump(0, 0, f);
+        sign_fails(&mut c);
+    }
+    (c, bump(f))
+}
+
+#[test]
+fn failed_transfers_never_use_up_the_seal_or_the_rescue() {
+    let (mut c, _) = burns_used_up();
     call(bob(), 1);
-    let _ = c.rebump(0, 0, fees(fee * 11 / 10 + 1, prio * 11 / 10 + 1));
+    let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
+    let lot = c.get_lot(0).unwrap();
+    let count = |nonce: u64, burn: bool| lot.issued.iter().filter(|i| i.nonce == nonce && (i.kind == Kind::Burn) == burn).count();
+    let max = evm::MAX_ISSUED_PER_NONCE;
+    assert_eq!(lot.state, LotState::Sealing);
+    assert_eq!((count(0, false), count(0, true), count(1, true)), (max, max, 1), "every issued entry is kept until proof");
+}
+
+#[test]
+#[should_panic(expected = "too many transfers issued at this nonce")]
+fn transfers_per_nonce_are_bounded() {
+    let (mut c, f) = failed_transfers();
+    call(alice(), 1);
+    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
+}
+
+#[test]
+#[should_panic(expected = "too many burns issued at this nonce")]
+fn burns_per_nonce_are_bounded() {
+    let (mut c, f) = burns_used_up();
+    call(bob(), 1);
+    let _ = c.rebump(0, 0, f);
 }
 
 #[test]
@@ -797,6 +847,29 @@ fn the_minter_pays_for_storage() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
     let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
+}
+
+/// Runs the real mint chain in one context, so storage usage accumulates across the callbacks.
+#[test]
+fn the_minter_pays_for_the_lots_persisted_storage() {
+    let mut c = new_contract(Finality::Safe);
+    call(acc("lot.testnet"), ONE_NEAR);
+    let before = env::storage_usage();
+    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
+    let actions: Vec<MockAction> = near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).collect();
+    let refund = actions.iter().find_map(|a| match a { MockAction::Transfer { deposit, .. } => Some(*deposit), _ => None }).unwrap();
+    let args: Value = actions.iter().find_map(|a| match a {
+        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == b"on_derived" => serde_json::from_slice(args).ok(),
+        _ => None,
+    }).unwrap();
+    let storage: NearToken = serde_json::from_value(args["storage"].clone()).unwrap();
+    assert_eq!(refund.saturating_add(storage).saturating_add(mpc::REQUEST_DEPOSIT).as_yoctonear(), ONE_NEAR, "the minter keeps paying only storage and the MPC deposit");
+
+    let log: CreationLog = serde_json::from_value(args["log"].clone()).unwrap();
+    let _ = c.on_derived(0, args["recipient"].as_str().unwrap().into(), log, storage, Ok(LOT_KEY.into()));
+    assert!(c.on_mint_verified(0, storage, attested()).is_some());
+    c.lots.flush();
+    assert_eq!(storage, env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128));
 }
 
 #[test]
@@ -1221,6 +1294,38 @@ fn nft_views_include_live_lease_tokens() {
     let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
     let svg = String::from_utf8(svg).unwrap();
     assert!(svg.contains("Leasehold on lot #0") && svg.contains("Until 1970-01-01 00:28 UTC") && svg.contains("Budget left 30000000000000000000"), "{svg}");
+}
+
+#[test]
+fn a_page_may_start_at_the_end_of_titles_and_leases() {
+    let c = leased();
+    call(bob(), 0);
+    assert!(c.nft_tokens(Some(U128(2)), None).is_empty());
+    assert!(c.nft_tokens_for_owner(bob(), Some(U128(1)), None).is_empty());
+}
+
+#[test]
+#[should_panic(expected = "Out of bounds, please use a smaller from_index.")]
+fn an_offset_past_u32_is_out_of_bounds_not_the_first_page() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens(Some(U128(1 << 32)), None);
+}
+
+#[test]
+#[should_panic(expected = "Out of bounds, please use a smaller from_index.")]
+fn an_owner_offset_past_their_tokens_is_out_of_bounds() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens_for_owner(bob(), Some(U128(2)), None);
+}
+
+#[test]
+#[should_panic(expected = "Cannot provide limit of 0.")]
+fn a_zero_limit_is_refused() {
+    let c = leased();
+    call(bob(), 0);
+    let _ = c.nft_tokens(None, Some(0));
 }
 
 /// `streamedAmountOf` read from Sablier Lockup v4 on Base Sepolia at a block with that timestamp.

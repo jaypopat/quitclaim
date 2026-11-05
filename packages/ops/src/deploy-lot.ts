@@ -3,17 +3,17 @@
  * deploys the lot contract to it. Every lot address derives from this account: never redeploy lots
  * to a different one.
  *
- *   bun run deploy-lot <account> [Latest|Safe|Finalized]
+ *   bun run deploy-lot <account> [Latest|Safe]
  */
-import { Account, KeyPair, actions, nearToYocto, teraToGas, type KeyPairString } from "near-api-js";
-import { config } from "@quitclaim/shared";
-import { account, provider } from "./near.ts";
+import { Account, KeyPair, KeyPairSigner, actions, nearToYocto, teraToGas } from "near-api-js";
+import { config, nearProvider } from "@quitclaim/shared";
+import { account, nearTxUrl } from "./near.ts";
 import { env } from "./env.ts";
 import { LOCKUP } from "./sablier.ts";
 
 const [contractId, finality = "Safe"] = Bun.argv.slice(2);
-if (!contractId || !["Latest", "Safe", "Finalized"].includes(finality)) {
-  console.error("usage: bun run deploy-lot <account> [Latest|Safe|Finalized]");
+if (!contractId || !["Latest", "Safe"].includes(finality)) {
+  console.error("usage: bun run deploy-lot <account> [Latest|Safe]");
   process.exit(1);
 }
 const wasm = await Bun.file(new URL("../../../target/near/quitclaim_lot/quitclaim_lot.wasm", import.meta.url)).bytes();
@@ -22,7 +22,7 @@ const key = KeyPair.fromRandom("ed25519");
 await (await account(env.deployer())).createAccount({ newAccountId: contractId, publicKey: key.getPublicKey().toString(), nearToTransfer: nearToYocto("5") });
 await Bun.write(`${env.credentialsDir}/${contractId}.json`, JSON.stringify({ account_id: contractId, public_key: key.getPublicKey().toString(), private_key: key.toString() }));
 
-const contract = new Account(contractId, provider(), key.toString() as KeyPairString);
+const contract = new Account(contractId, nearProvider, new KeyPairSigner(key));
 const res = await contract.signAndSendTransaction({
   receiverId: contractId,
   actions: [
@@ -31,5 +31,5 @@ const res = await contract.signAndSendTransaction({
   ],
   waitUntil: "FINAL",
 });
-console.log(`deployed ${contractId} (finality ${finality}): https://testnet.nearblocks.io/txns/${res.transaction.hash}`);
+console.log(`deployed ${contractId} (finality ${finality}): ${nearTxUrl(res.transaction.hash)}`);
 console.log(`set LOT_CONTRACT=${contractId} in .env`);

@@ -4,6 +4,7 @@
  * a minter royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
  * to Carol: three owners, one address.
  */
+import { nearToYocto } from "near-api-js";
 import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
 import { provenMined, settle } from "../keeper.ts";
@@ -14,7 +15,7 @@ import { alice, aliceEvm, bob, bobEvm, carol, contract, minter, keeper, lotOf, r
 import { firstLine, settleLinks, type Run } from "./report.ts";
 import { retainedBytes } from "../heist-evidence.ts";
 
-const PRICE = 10n ** 23n;
+const PRICE = nearToYocto("0.1");
 const ROYALTY_BPS = 250;
 
 export async function handover(run: Run) {

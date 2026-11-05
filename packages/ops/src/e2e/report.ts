@@ -1,7 +1,8 @@
 import { parseTransaction, recoverTransactionAddress, type Hex, type TransactionSerialized } from "viem";
+import type { Finality } from "@quitclaim/shared";
 import * as base from "../base.ts";
 import type { SettleStep } from "../keeper.ts";
-import { codeHash, getFinality, provider } from "../near.ts";
+import { codeHash, fullAccessKeys, getFinality } from "../near.ts";
 import { parseEvidence, type HeistRun } from "../heist-evidence.ts";
 
 type Row = { step: string; expect: string; got: string; links: string[]; pass: boolean };
@@ -14,10 +15,17 @@ export class Run {
   readonly started = new Date();
   heist?: HeistRun;
 
-  constructor(
+  private constructor(
     readonly scenario: string,
     readonly contract: string,
+    private readonly deployed: { finality: Finality; codeHash: string; fullAccessKeys: number },
   ) {}
+
+  /** Reads the deployment up front, so an RPC failure at the end can't lose the scenario's error and report. */
+  static async start(scenario: string, contract: string) {
+    const [finality, hash, keys] = await Promise.all([getFinality(contract), codeHash(contract), fullAccessKeys(contract)]);
+    return new Run(scenario, contract, { finality, codeHash: hash, fullAccessKeys: keys.length });
+  }
 
   record(step: string, expect: string, got: string, pass: boolean, links: string[] = []) {
     this.rows.push({ step, expect, got, links, pass });
@@ -46,7 +54,7 @@ export class Run {
 
   async write(error?: unknown) {
     const pass = !error && this.rows.length > 0 && this.rows.every((r) => r.pass);
-    const [finality, hash] = await Promise.all([getFinality(this.contract), codeHash(this.contract)]);
+    const { finality, codeHash: hash, fullAccessKeys: recordedFullAccessKeys } = this.deployed;
     const lines = [
       `# e2e ${this.scenario} ${this.started.toISOString()}`,
       "",
@@ -72,10 +80,8 @@ export class Run {
     const file = new URL(`../../../../reports/e2e-${this.scenario}-${stamp}.md`, import.meta.url);
     await Bun.write(file, lines.join("\n"));
     if (pass && this.heist) {
-      const keys = await provider().viewAccessKeyList({ accountId: this.contract });
       const evidence = parseEvidence({ ...this.heist, version: 1, recordedAt: this.started.toISOString(),
-        report: `e2e-${this.scenario}-${stamp}.md`, codeHash: hash, finality,
-        recordedFullAccessKeys: keys.keys.filter(key => key.access_key.permission === "FullAccess").length });
+        report: `e2e-${this.scenario}-${stamp}.md`, codeHash: hash, finality, recordedFullAccessKeys });
       const artifact = new URL(`../../../../reports/heist-${stamp}.json`, import.meta.url);
       await Bun.write(artifact, `${JSON.stringify(evidence, null, 2)}\n`);
       console.log(`Heist evidence: ${artifact.pathname}`);

@@ -15,7 +15,6 @@ const deployment = sablier.contracts.get({ chainId: config.evm.chainId, contract
 if (!deployment) throw new Error(`no Sablier Lockup v4.0 deployment on chain ${config.evm.chainId}`);
 
 export const LOCKUP = deployment.address as Address;
-export const SOURCE_KIND = "sablier-lockup-v4";
 
 const lockup = { address: LOCKUP, abi: lockupAbi } as const;
 const bare = (h: string) => h.replace(/^0x/, "").toLowerCase();

@@ -34,23 +34,21 @@ impl Contract {
     /// The controller lists a Clean lot: the lease while one exists, else the title. Nothing can
     /// sign while Clean, so the position can't change under the offer.
     pub fn list(&mut self, id: LotId, price: U128) {
-        let mut lot = self.load(id);
-        Self::require_controller(&lot);
+        let lot = self.load_mut(id);
+        Self::require_controller(lot);
         require!(lot.state == LotState::Clean, "lot is not Clean");
         require!(price.0 > 0, "price must be positive");
         let item = if lot.lease.is_some() { Item::Lease } else { Item::Title };
         lot.listing = Some(Listing { item, price, version: lot.version });
         lot.lease_offer = None;
-        self.lots.insert(id, lot);
     }
 
     /// Withdraws the listing and any lease offer.
     pub fn delist(&mut self, id: LotId) {
-        let mut lot = self.load(id);
-        Self::require_controller(&lot);
+        let lot = self.load_mut(id);
+        Self::require_controller(lot);
         lot.listing = None;
         lot.lease_offer = None;
-        self.lots.insert(id, lot);
     }
 
     /// `version` is the lot version the buyer saw, so a relisted or unsealed lot can't be bought by surprise.
