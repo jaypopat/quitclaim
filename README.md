@@ -1,10 +1,28 @@
 # Quitclaim
 
-**An NFT that is the title to a Base address. Sell it or lease it, and the previous holder's signatures die first.**
+**Sell a stream of locked tokens, or sell a period of its unlocks and keep the rest.**
+
+A Quitclaim NFT is the title to a Base address receiving a token stream. Sell the title permanently, or lease withdrawal control for a fixed term. Before control changes hands, the previous holder's outstanding signatures must be proven consumed.
 
 Locked tokens already change hands over the counter, settled on trust. Buy someone's wallet and you can never be sure they didn't keep the key, or a withdrawal they signed before the sale.
 
 Quitclaim makes the handover provable. A NEP-171 NFT on NEAR controls a Base Sepolia address through NEAR Chain Signatures, and no one ever holds its key. Before control changes hands, the contract burns the seller's outstanding Base nonce and NEAR MPC proves the burn landed. Anything the seller kept is now invalid.
+
+## Sell the title or lease the unlocks
+
+Sell the title to transfer control of the lot, including its remaining stream and tokens already held at its address. The purchase moves the title and credits the seller and the minter's royalty in one NEAR call.
+
+Or sell a lease for the next 30 days of unlocks while keeping the title. The buyer gets a lease NFT and can withdraw as tokens vest, up to the amount the attested stream schedule vests during the term. The lease does not grant unrestricted access to the lot's existing balance.
+
+The buyer can resell the remaining lease through the same proven handover. Resale carries forward the allowance already charged. At expiry, anyone can start settlement. Control returns to the title owner only after outstanding signatures are proven consumed and the lease NFT burns.
+
+## Why choose this over a transferable stream?
+
+For a permanent sale of a stream alone, a transferable stream NFT is simpler. Quitclaim adds a bounded, resellable lease of withdrawal control. Transferring a stream NFT alone does not provide a temporary right to its unlocks or settle the return of control.
+
+Quitclaim also keeps the remaining stream and tokens already withdrawn into the lot under the same control. Every sale, lease resale, and lease return requires proof that the previous controller's outstanding signatures can no longer execute. Other systems could implement comparable rights. Quitclaim demonstrates them with a NEAR NFT controlling a native Base address.
+
+The stream must be created with the lot address as its recipient. Quitclaim cannot import an existing position from an ordinary wallet, and the demo does not establish demand or the stream sender's approval of a sale.
 
 ## The proof, on chain
 
@@ -43,12 +61,6 @@ sequenceDiagram
 - **Signing policy:** the contract only signs what it builds, an ERC-20 transfer of the lot's token or a nonce burn, and only for the current controller.
 - **Minting:** no admin. `mint_proven` takes the stream's creation log, checks it pays the derived lot address, and has MPC attest that exact log on Base.
 - **Handover:** a lot changes hands only when Clean, meaning every signature it issued is proven consumed.
-
-## Sell or lease
-
-- **Sell:** `buy` moves the title and credits the seller and the minter's royalty in one call.
-- **Lease:** sell the next N days of unlocks and keep the rest. The lessee gets a lease NFT that controls the address until it ends, capped at what the stream vests during the term. Leases resell through the same proven handover.
-- **Expiry:** anyone can seal. The lessee's leftover signatures are burned and proven, the lease NFT burns, and control returns to the owner. This time the buyer tried to keep it, and Base rejects that too.
 
 ## Why NEAR
 
