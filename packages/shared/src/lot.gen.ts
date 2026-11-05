@@ -51,7 +51,6 @@ export interface Lot {
   next_seq: number;
   owner: string;
   path: string;
-  prove_in_flight: boolean;
   sign_in_flight: boolean;
   state: LotState;
   version: number;
@@ -143,6 +142,7 @@ export interface ProveArgs {
 }
 export interface RebumpArgs {
   id: number;
+  nonce: number;
   fees: Fees;
 }
 export interface RegisterSignatureArgs {

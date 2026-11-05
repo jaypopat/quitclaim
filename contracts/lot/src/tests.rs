@@ -229,7 +229,7 @@ fn failed_proof_changes_nothing() {
     as_contract();
     assert!(!c.on_proved(0, 0, Err(PromiseError::Failed)));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.next_nonce, lot.issued.len(), lot.prove_in_flight), (0, 1, false));
+    assert_eq!((lot.next_nonce, lot.issued.len()), (0, 1));
 }
 
 #[test]
@@ -342,7 +342,7 @@ fn anyone_can_rebump_a_sealing_burn() {
     as_contract();
     let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
     call(bob(), 1);
-    let _ = c.rebump(0, fees(61_000_000, 1_210_000));
+    let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
     assert_eq!(lot.issued.len(), 3);
     assert!(lot.issued.iter().all(|i| i.nonce == 0));
@@ -399,4 +399,74 @@ fn transfer_call_is_refused() {
     let mut c = active_lot();
     call(alice(), 1);
     let _ = c.nft_transfer_call(bob(), "0".into(), None, None, String::new());
+}
+
+fn sealing_with_burn() -> Contract {
+    let mut c = signed_claim0();
+    call(alice(), 1);
+    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    as_contract();
+    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    c
+}
+
+#[test]
+#[should_panic(expected = "fees below the 1 Mwei floor")]
+fn zero_fees_are_rejected() {
+    let mut c = sealing_with_burn();
+    call(bob(), 1);
+    let _ = c.rebump(0, 0, fees(0, 0));
+}
+
+#[test]
+#[should_panic(expected = "too many txs issued at this nonce")]
+fn txs_per_nonce_are_bounded() {
+    let mut c = sealing_with_burn();
+    let (mut fee, mut prio) = (55_000_000u128, 1_100_000u128);
+    for seq in 2..evm::MAX_ISSUED_PER_NONCE as u32 {
+        fee = fee * 11 / 10 + 1;
+        prio = prio * 11 / 10 + 1;
+        call(bob(), 1);
+        let _ = c.rebump(0, 0, fees(fee, prio));
+        as_contract();
+        let _ = c.on_signed(0, seq, Err(PromiseError::Failed));
+    }
+    assert_eq!(c.get_lot(0).unwrap().issued.len(), evm::MAX_ISSUED_PER_NONCE);
+    call(bob(), 1);
+    let _ = c.rebump(0, 0, fees(fee * 11 / 10 + 1, prio * 11 / 10 + 1));
+}
+
+#[test]
+fn burn_at_the_stuck_nonce_stays_repriceable_after_a_rescue() {
+    let mut c = sealing_with_burn();
+    call(bob(), 1);
+    let _ = c.rescue(0, fees(55_000_000, 1_100_000));
+    as_contract();
+    let _ = c.on_signed(0, 2, Err(PromiseError::Failed));
+    call(bob(), 1);
+    let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(lot.issued.iter().filter(|i| i.nonce == 0 && i.kind == Kind::Burn).count(), 2);
+}
+
+#[test]
+#[should_panic(expected = "no burn outstanding at that nonce")]
+fn rebump_needs_a_burn_at_that_nonce() {
+    let mut c = sealing_with_burn();
+    call(bob(), 1);
+    let _ = c.rebump(0, 1, fees(61_000_000, 1_210_000));
+}
+
+#[test]
+fn a_proof_in_flight_does_not_block_another() {
+    let mut c = signed_claim0();
+    call(bob(), 1);
+    let _ = c.prove(0, 0);
+    let _ = c.prove(0, 0);
+    as_contract();
+    assert!(!c.on_proved(0, 0, Err(PromiseError::Failed)), "the griefer's proof times out");
+    as_contract();
+    assert!(c.on_proved(0, 0, attested()), "the honest proof still lands");
+    as_contract();
+    assert!(!c.on_proved(0, 0, attested()), "a duplicate success is stale");
 }

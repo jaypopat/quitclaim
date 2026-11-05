@@ -114,7 +114,6 @@ impl Contract {
                 issued: vec![],
                 next_seq: 0,
                 sign_in_flight: false,
-                prove_in_flight: false,
             },
         );
         Promise::new(self.signer.clone())
@@ -175,14 +174,18 @@ impl Contract {
         PromiseOrValue::Promise(self.burn(id, lot, nonce, fees))
     }
 
-    /// Anyone may re-sign the burn at the highest outstanding nonce with higher fees, so a seller
-    /// who seals and walks away can't strand the lot. Burns are 0-value self-transfers.
+    /// Anyone may re-sign the burn at an outstanding nonce with higher fees, so a seller who seals
+    /// and walks away can't strand the lot. The nonce is explicit: after a rescue, the burn at the
+    /// stuck nonce must still be repriceable. Burns are 0-value self-transfers.
     #[payable]
-    pub fn rebump(&mut self, id: LotId, fees: Fees) -> Promise {
+    pub fn rebump(&mut self, id: LotId, nonce: u64, fees: Fees) -> Promise {
         require_deposit();
         let lot = self.lot(id);
         require!(lot.state == LotState::Sealing, "lot is not Sealing");
-        let nonce = lot.issued.iter().map(|i| i.nonce).max().unwrap_or(lot.next_nonce);
+        require!(
+            lot.issued.iter().any(|i| i.nonce == nonce && i.kind == Kind::Burn),
+            "no burn outstanding at that nonce"
+        );
         self.burn(id, lot, nonce, fees)
     }
 
@@ -261,16 +264,15 @@ impl Contract {
     }
 
     /// Anyone may ask MPC to attest that an issued tx is mined. The hash comes from contract state.
+    /// No per-lot lock: a failing proof only times out at MPC, and `on_proved` ignores stale ones,
+    /// so a griefer proving a tx that never mined can't block an honest proof.
     #[payable]
     pub fn prove(&mut self, id: LotId, seq: u32) -> Promise {
         require_deposit();
-        let mut lot = self.lot(id);
-        require!(!lot.prove_in_flight, "a proof is already in flight");
+        let lot = self.lot(id);
         let issued = lot.issued.iter().find(|i| i.seq == seq).unwrap_or_else(|| env::panic_str("no such issued tx"));
         let hash = issued.tx_hash.clone().unwrap_or_else(|| env::panic_str("issued tx has no recorded signature"));
         let nonce = issued.nonce;
-        lot.prove_in_flight = true;
-        self.lots.insert(id, lot);
         Promise::new(self.signer.clone())
             .function_call(
                 "verify_foreign_transaction".to_string(),
@@ -285,7 +287,6 @@ impl Contract {
     #[private]
     pub fn on_proved(&mut self, id: LotId, nonce: u64, #[callback_result] r: Result<Value, PromiseError>) -> bool {
         let mut lot = self.lot(id);
-        lot.prove_in_flight = false;
         let consumed = r.is_ok() && nonce >= lot.next_nonce;
         if consumed {
             lot.issued.retain(|i| i.nonce > nonce);

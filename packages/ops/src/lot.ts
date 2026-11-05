@@ -45,26 +45,36 @@ const mustLot = async (contract: string, id: number) => {
   return lot;
 };
 
-export async function requestClaim(contract: string, signer: string, id: number, to: Address) {
+export async function requestClaim(
+  contract: string,
+  signer: string,
+  id: number,
+  to: Address,
+  override: { gasLimit?: number; fees?: Fees } = {},
+) {
   const lot = await mustLot(contract, id);
-  const gas = await base.estimateClaimGas(lot.vesting as Address, lot.address as Address, to);
+  const gas = override.gasLimit ?? Number(await base.estimateClaimGas(lot.vesting as Address, lot.address as Address, to));
   return call(signer, contract, "request_claim", {
     id,
     to,
-    gas_limit: Number(gas),
-    fees: await floor(lot, lot.next_nonce),
+    gas_limit: gas,
+    fees: override.fees ?? (await floor(lot, lot.next_nonce)),
   }, { deposit: YOCTO });
 }
 
-export async function seal(contract: string, signer: string, id: number) {
+export async function seal(contract: string, signer: string, id: number, fees?: Fees) {
   const lot = await mustLot(contract, id);
-  return call(signer, contract, "seal", { id, fees: await floor(lot, lot.next_nonce) }, { deposit: YOCTO });
+  return call(signer, contract, "seal", { id, fees: fees ?? await floor(lot, lot.next_nonce) }, { deposit: YOCTO });
 }
 
-export async function rebump(contract: string, signer: string, id: number) {
+export async function rebump(contract: string, signer: string, id: number, nonce: number) {
   const lot = await mustLot(contract, id);
-  const nonce = Math.max(lot.next_nonce, ...lot.issued.map((i) => i.nonce));
-  return call(signer, contract, "rebump", { id, fees: await floor(lot, nonce) }, { deposit: YOCTO });
+  return call(signer, contract, "rebump", { id, nonce, fees: await floor(lot, nonce) }, { deposit: YOCTO });
+}
+
+export async function rescue(contract: string, signer: string, id: number) {
+  const lot = await mustLot(contract, id);
+  return call(signer, contract, "rescue", { id, fees: await floor(lot, lot.next_nonce + 1) }, { deposit: YOCTO });
 }
 
 export type RelayStep =
@@ -74,8 +84,9 @@ export type RelayStep =
   | { kind: "prove"; seq: number; outcome: CallOutcome<boolean> };
 
 /**
- * Broadcasts the selected issued txs, waits for one to mine, waits for the contract's finality,
- * then proves it. Safe to rerun: already-known and already-consumed txs are not errors.
+ * Broadcasts the selected issued txs, waits for one to mine with status 1, waits for the contract's
+ * finality, then proves the highest such nonce. Safe to rerun: already-known and already-consumed
+ * txs are not errors. A reverted tx can never be proven; `reverted` tells the caller to `rescue`.
  */
 export async function relay(contract: string, prover: string, id: number, pick: (i: Issued) => boolean = isBurn) {
   const steps: RelayStep[] = [];
@@ -87,23 +98,31 @@ export async function relay(contract: string, prover: string, id: number, pick: 
     steps.push({ kind: "broadcast", seq: i.seq, result: await base.broadcast(raw) });
   }
 
-  const deadline = Date.now() + 180_000;
+  const seen = new Set<number>();
   let mined: { issued: Issued; block: bigint } | null = null;
-  while (!mined && Date.now() < deadline) {
-    for (const i of lot.issued.filter((i) => i.tx_hash)) {
+  let reverted = false;
+  const highestNonce = Math.max(lot.next_nonce, ...lot.issued.map((i) => i.nonce));
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    for (const i of lot.issued.filter((i) => i.tx_hash && !seen.has(i.seq))) {
       const r = await base.receipt(i.tx_hash as Hex);
       if (!r) continue;
+      seen.add(i.seq);
       steps.push({ kind: "mined", seq: i.seq, tx: r.transactionHash, block: r.blockNumber, status: r.status });
-      if (r.status === "reverted") throw new Error(`issued seq ${i.seq} reverted at nonce ${i.nonce}: use rescue`);
-      mined = { issued: i, block: r.blockNumber };
-      break;
+      if (r.status === "reverted") reverted = true;
+      else if (!mined || i.nonce > mined.issued.nonce) mined = { issued: i, block: r.blockNumber };
     }
-    if (!mined) await Bun.sleep(3_000);
+    if (mined?.issued.nonce === highestNonce) break;
+    if (reverted && lot.issued.filter((i) => i.nonce === highestNonce).some((i) => seen.has(i.seq))) break;
+    await Bun.sleep(3_000);
   }
-  if (!mined) throw new Error(`no issued tx for lot ${id} mined within 180 s`);
+  if (!mined) {
+    if (reverted) return { steps, lot: await mustLot(contract, id), proven: false, reverted };
+    throw new Error(`no issued tx for lot ${id} mined within 180 s`);
+  }
 
   await base.waitFinality(mined.block, await getFinality(contract));
   const outcome = await call(prover, contract, "prove", { id, seq: mined.issued.seq }, { deposit: YOCTO });
   steps.push({ kind: "prove", seq: mined.issued.seq, outcome });
-  return { steps, lot: await mustLot(contract, id) };
+  return { steps, lot: await mustLot(contract, id), proven: outcome.ok && outcome.value === true, reverted };
 }
