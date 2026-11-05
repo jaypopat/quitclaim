@@ -27,7 +27,8 @@ bun run verify
 - `bun run dev` serves the frontend with HMR.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <prefix> [Latest|Safe]` deploys a lot contract to `<prefix>.<ADMIN_ACCOUNT>`.
-- `bun run gate1` runs the adversarial handover on two fresh lots and writes a report with every tx link to `reports/`. It covers a transfer with an outstanding request, a retained withdrawal, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts, a pending-withdrawal replacement, and rescue after a reverted transfer.
+- `bun run e2e [handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes a report with every tx link to `reports/`. `handover` covers a retained withdrawal and the heist, a transfer with an outstanding request, an outsider pulling the stream during a listing, a sale with an issuer royalty and pulled payouts. `recovery` covers a pending-withdrawal replacement, a stalled burn repriced after a rescue, and the keeper rescuing a reverted transfer.
+- `bun run keeper [--watch]` settles every lot with unproven transactions: it tops up gas, broadcasts (only burns while Sealing), proves, and rescues a reverted nonce. Each action is permissionless, so anyone can run one.
 
 Ops scripts need a root `.env`; see `.env.example`.
 

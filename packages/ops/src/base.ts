@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
+  fallback,
   http,
   keccak256,
   parseTransaction,
@@ -23,9 +24,10 @@ const erc20Abi = [
   { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
 ] as const;
 
-export const pub = createPublicClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl) });
+const transport = () => fallback(config.evm.rpcUrls.map((url) => http(url)));
+export const pub = createPublicClient({ chain: baseSepolia, transport: transport() });
 export const funderAccount = () => privateKeyToAccount(env.funderKey());
-export const wallet = () => createWalletClient({ chain: baseSepolia, transport: http(config.evm.rpcUrl), account: funderAccount() });
+export const wallet = () => createWalletClient({ chain: baseSepolia, transport: transport(), account: funderAccount() });
 const funder = wallet;
 
 export const txUrl = (hash: string) => `${config.evm.explorer}/tx/${hash}`;

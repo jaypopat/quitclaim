@@ -17,7 +17,8 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run dev` serves the web app.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <prefix> [Latest|Safe]` creates `<prefix>.<ADMIN_ACCOUNT>` and deploys the lot contract.
-- `bun run gate1` runs the adversarial handover (including a sale with royalty) on two fresh lots and writes `reports/gate1-*.md`.
+- `bun run e2e [handover|recovery]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
+- `bun run keeper [--watch]` settles lots: gas top-up, broadcast, prove, rescue. Every action is permissionless.
 - Ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root.
 
 ## Conventions
@@ -41,7 +42,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 - `sign` and `verify_foreign_transaction` each need 1 yoctoNEAR and at least 15 Tgas. Ethereum isn't whitelisted for verification; Base is. Every failed verification is a silent ~115 s timeout.
 - Base charges an L1 fee on top of L2 gas. Estimate gas per tx; never hardcode it.
-- Local DNS blocks some RPC hosts. Use publicnode for Base Sepolia and thirdweb for Sepolia.
+- RPC access fails over: `config.near.rpcUrls` and `config.evm.rpcUrls` (override with `NEAR_RPCS` / `BASE_RPCS`). Local DNS blocks some hosts; the defaults are ones that resolve here.
 - The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
 - A call that returns a `Promise` must be added to `resolvesVia` in `packages/shared/scripts/gen-abi.ts`, or `bun run abi` fails.
 - `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.

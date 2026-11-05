@@ -15,10 +15,11 @@
     "build:evm": "cd contracts/evm && forge build",
     "test:evm": "cd contracts/evm && forge test",
     "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run build:lot && bun run build:evm && bun run test:evm",
-    "gate1": "bun packages/ops/src/gate1.ts",
     "deploy-lot": "bun packages/ops/src/deploy-lot.ts",
     "lot-address": "bun packages/ops/src/lot-address.ts",
-    "abi": "bun packages/shared/scripts/gen-abi.ts"
+    "abi": "bun packages/shared/scripts/gen-abi.ts",
+    "e2e": "bun packages/ops/src/e2e/index.ts",
+    "keeper": "bun packages/ops/src/keeper.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
