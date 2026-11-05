@@ -1,3 +1,5 @@
+use alloy_primitives::U256;
+use alloy_sol_types::{sol, SolCall};
 use near_sdk::env;
 use omni_transaction::evm::types::Signature;
 use omni_transaction::evm::EVMTransaction;
@@ -36,13 +38,12 @@ pub fn address_from_uncompressed(pk: &[u8; 64]) -> Address {
     env::keccak256_array(pk)[12..].try_into().unwrap()
 }
 
+sol! {
+    function transfer(address to, uint256 amount) returns (bool);
+}
+
 pub fn transfer_calldata(to: &Address, amount: u128) -> Vec<u8> {
-    let mut data = env::keccak256_array(b"transfer(address,uint256)")[..4].to_vec();
-    data.extend_from_slice(&[0u8; 12]);
-    data.extend_from_slice(to);
-    data.extend_from_slice(&[0u8; 16]);
-    data.extend_from_slice(&amount.to_be_bytes());
-    data
+    transferCall { to: (*to).into(), amount: U256::from(amount) }.abi_encode()
 }
 
 /// The exact EIP-1559 tx an issued entry stands for. `lot` is the burn's self-transfer target.

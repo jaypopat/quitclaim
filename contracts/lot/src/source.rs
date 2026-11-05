@@ -1,23 +1,51 @@
-//! Proving a lot's source at mint. The issuer hands in Sablier's `CreateLockupLinearStream` log;
-//! the contract checks what a buyer relies on (emitter, recipient, non-cancelable, non-transferable,
-//! token), then asks MPC to attest that exact log mined at the contract's finality.
+//! Proving a lot's source at mint. The issuer hands in Sablier's `CreateLockupLinearStream` log; the
+//! contract decodes it with Sablier's own event definition, checks what a buyer relies on (emitter,
+//! recipient, non-cancelable, non-transferable, token), and asks MPC to attest that exact log mined
+//! at the contract's finality. The request and its expected payload hash come from `near-mpc-sdk`.
 
-use near_mpc_contract_interface::types::{
-    EvmExtractedValue, ExtractedValue, ForeignChainRpcRequest, ForeignTxPayloadVersion, ForeignTxSignPayload, EvmLog,
-};
+use alloy_primitives::B256;
+use alloy_sol_types::{sol, SolEvent};
+use near_mpc_contract_interface::types::{DomainId, EvmLog, EvmTxId, VerifyForeignTransactionRequestArgs};
+use near_mpc_sdk::foreign_chain::ForeignChainRequestBuilder;
 use near_sdk::near;
-use near_sdk::serde_json::{self, json};
+use near_sdk::serde_json;
 
-use crate::evm::{self, Address};
+use crate::evm::Address;
 use crate::mpc;
 use crate::types::Finality;
 
 pub const SOURCE_KIND: &str = "sablier-lockup-v4";
 
-/// keccak256("CreateLockupLinearStream(uint256,(address,address,address,uint128,address,bool,bool,(uint40,uint40),string),uint40,uint40,(uint128,uint128))")
-pub const CREATE_LOCKUP_LINEAR: &str = "bc42cec3f2bd75ce97894dacc83ec6c4b682220d349b5a52d5743e7b46eba2d0";
+/// Bounds what a caller can make the contract store and hash before MPC has attested anything.
+pub const MAX_LOG_DATA_BYTES: usize = 1024;
 
-/// A Base event log as MPC extracts it. Hex fields carry no `0x` except `data`.
+sol! {
+    /// From Sablier Lockup v4 (`ISablierLockupLinear`, `Lockup.CreateEventCommon`).
+    struct Timestamps { uint40 start; uint40 end; }
+    struct CreateEventCommon {
+        address funder;
+        address sender;
+        address recipient;
+        uint128 depositAmount;
+        address token;
+        bool cancelable;
+        bool transferable;
+        Timestamps timestamps;
+        string shape;
+    }
+    struct UnlockAmounts { uint128 start; uint128 cliff; }
+    event CreateLockupLinearStream(
+        uint256 indexed streamId,
+        CreateEventCommon commonParams,
+        uint40 cliffTime,
+        uint40 granularity,
+        UnlockAmounts unlockAmounts
+    );
+}
+
+/// The log as `mint_proven` takes it: MPC's `EvmLog` shape, with an ABI schema of our own (MPC's
+/// `abi` feature only builds inside MPC's workspace). Converted into `EvmLog`, whose hex types
+/// reject malformed hashes and addresses.
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CreationLog {
@@ -32,6 +60,12 @@ pub struct CreationLog {
     pub topics: Vec<String>,
 }
 
+impl CreationLog {
+    pub fn to_evm_log(&self) -> Result<EvmLog, &'static str> {
+        serde_json::to_value(self).ok().and_then(|v| serde_json::from_value(v).ok()).ok_or("log hashes, address or topics are malformed")
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Stream {
     pub id: u128,
@@ -40,119 +74,49 @@ pub struct Stream {
     pub deposit: u128,
 }
 
-fn word(data: &[u8], i: usize) -> Result<&[u8], &'static str> {
-    data.get(i * 32..i * 32 + 32).ok_or("log data too short")
-}
-
-fn address_word(w: &[u8]) -> Result<Address, &'static str> {
-    if w[..12].iter().any(|b| *b != 0) {
-        return Err("malformed address word");
+fn log_data(log: &EvmLog) -> Result<Vec<u8>, &'static str> {
+    let hex = log.data.strip_prefix("0x").ok_or("log data must start with 0x")?;
+    if hex.len() / 2 > MAX_LOG_DATA_BYTES {
+        return Err("log data must be hex of at most 1024 bytes");
     }
-    Ok(w[12..].try_into().unwrap())
-}
-
-fn u128_word(w: &[u8]) -> Result<u128, &'static str> {
-    if w[..16].iter().any(|b| *b != 0) {
-        return Err("value exceeds u128");
-    }
-    Ok(u128::from_be_bytes(w[16..].try_into().unwrap()))
-}
-
-fn bool_word(w: &[u8]) -> Result<bool, &'static str> {
-    match u128_word(w)? {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err("malformed bool word"),
-    }
+    hex::decode(hex).map_err(|_| "log data must be hex of at most 1024 bytes")
 }
 
 /// Checks the log is a Sablier linear-stream creation from `lockup` that can't be cancelled or
 /// moved, and returns what the lot binds to. The recipient is checked later against the derived address.
-/// Bounds what a caller can make the contract store and hash before MPC has attested anything.
-pub const MAX_LOG_DATA_BYTES: usize = 1024;
-
-fn exact_hex(s: &str, bytes: usize) -> bool {
-    let s = s.strip_prefix("0x").unwrap_or(s);
-    s.len() == bytes * 2 && s.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-/// Every field MPC will hash must be well formed, so building the request can't fail after state is written.
-fn check_shape(log: &CreationLog) -> Result<(), &'static str> {
-    if !exact_hex(&log.transaction_hash, 32) || !exact_hex(&log.block_hash, 32) {
-        return Err("log hashes must be 32-byte hex");
-    }
-    if !exact_hex(&log.address, 20) {
-        return Err("log address must be 20-byte hex");
-    }
-    if !log.topics.iter().all(|t| exact_hex(t, 32)) {
-        return Err("log topics must be 32-byte hex");
-    }
-    let data = log.data.strip_prefix("0x").ok_or("log data must start with 0x")?;
-    if data.len() % 2 != 0 || data.len() / 2 > MAX_LOG_DATA_BYTES || !data.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("log data must be hex of at most 1024 bytes");
-    }
-    Ok(())
-}
-
-pub fn decode(log: &CreationLog, lockup: &Address) -> Result<Stream, &'static str> {
-    check_shape(log)?;
+pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
+    let data = log_data(log)?;
     if log.removed {
         return Err("log was removed by a reorg");
     }
-    if evm::parse_address(&format!("0x{}", log.address.trim_start_matches("0x"))).as_ref() != Some(lockup) {
+    if &log.address.0 != lockup {
         return Err("log is not from the configured Sablier Lockup");
     }
-    if log.topics.len() != 2 || log.topics[0].trim_start_matches("0x") != CREATE_LOCKUP_LINEAR {
-        return Err("log is not CreateLockupLinearStream");
-    }
-    let id_bytes = hex::decode(log.topics[1].trim_start_matches("0x")).map_err(|_| "bad stream id")?;
-    let id = u128_word(id_bytes.get(..32).ok_or("bad stream id")?)?;
-    let data = hex::decode(log.data.trim_start_matches("0x")).map_err(|_| "log data is not hex")?;
-    let offset = u128_word(word(&data, 0)?)?;
-    if offset % 32 != 0 {
-        return Err("misaligned event params");
-    }
-    let base = (offset / 32) as usize;
-    let recipient = address_word(word(&data, base + 2)?)?;
-    let deposit = u128_word(word(&data, base + 3)?)?;
-    let token = address_word(word(&data, base + 4)?)?;
-    if bool_word(word(&data, base + 5)?)? {
+    let topics = log.topics.iter().map(|t| B256::from(t.0));
+    let event = CreateLockupLinearStream::decode_raw_log(topics, &data).map_err(|_| "log is not CreateLockupLinearStream")?;
+    let common = event.commonParams;
+    if common.cancelable {
         return Err("stream is cancelable");
     }
-    if bool_word(word(&data, base + 6)?)? {
+    if common.transferable {
         return Err("stream is transferable");
     }
-    Ok(Stream { id, recipient, token, deposit })
+    Ok(Stream {
+        id: event.streamId.try_into().map_err(|_| "stream id exceeds u128")?,
+        recipient: common.recipient.into_array(),
+        token: common.token.into_array(),
+        deposit: common.depositAmount,
+    })
 }
 
-fn rpc_request(log: &CreationLog, finality: Finality) -> serde_json::Value {
-    json!({ mpc::FOREIGN_CHAIN: {
-        "tx_id": log.transaction_hash.trim_start_matches("0x"),
-        "extractors": [{ "Log": { "log_index": log.log_index } }],
-        "finality": finality.as_str(),
-    }})
-}
-
-/// sha256(borsh(payload)) exactly as MPC signs it, so the request can demand this log and no other.
-pub fn expected_hash(log: &CreationLog, finality: Finality) -> Result<String, &'static str> {
-    let request: ForeignChainRpcRequest = serde_json::from_value(rpc_request(log, finality)).map_err(|_| "unrepresentable MPC request")?;
-    let extracted: EvmLog = serde_json::from_value(json!(log)).map_err(|_| "unrepresentable log")?;
-    let payload = ForeignTxSignPayload::new(
-        ForeignTxPayloadVersion::V1,
-        request,
-        vec![ExtractedValue::EvmExtractedValue(EvmExtractedValue::Log(extracted))],
-    );
-    Ok(hex::encode(payload.compute_msg_hash().map_err(|_| "payload hashing failed")?.0))
-}
-
-pub fn verify_args(log: &CreationLog, finality: Finality) -> Result<Vec<u8>, &'static str> {
-    Ok(serde_json::to_vec(&json!({
-        "request": {
-            "request": rpc_request(log, finality),
-            "domain_id": mpc::FOREIGN_TX_DOMAIN,
-            "payload_version": 1,
-            "expected_payload_hash": expected_hash(log, finality)?,
-        }
-    }))
-    .unwrap())
+/// A Base request for this tx that MPC answers only if it extracts exactly `log` at `log.log_index`.
+pub fn verify_request(log: &EvmLog, f: Finality) -> Result<VerifyForeignTransactionRequestArgs, &'static str> {
+    let (_, args) = ForeignChainRequestBuilder::new_base()
+        .with_tx_id(EvmTxId::from(log.transaction_hash.0))
+        .with_finality(mpc::evm_finality(f))
+        .with_expected_log(log.log_index, log.clone())
+        .with_domain_id(DomainId(mpc::FOREIGN_TX_DOMAIN))
+        .build()
+        .map_err(|_| "could not build the MPC request")?;
+    Ok(args)
 }

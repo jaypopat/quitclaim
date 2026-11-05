@@ -1,7 +1,7 @@
 import { base58 } from "@scure/base";
 import { getAddress, keccak256, type Address } from "viem";
 import { config } from "./config.ts";
-import { nearView } from "./rpc.ts";
+import { nearView } from "./near.ts";
 
 /** `secp256k1:<base58 of 64-byte uncompressed key without 0x04>` → EVM address. */
 export function evmAddressFromNearKey(nearKey: string): Address {
@@ -14,6 +14,6 @@ export function evmAddressFromNearKey(nearKey: string): Address {
 
 /** The lot address depends on the lot contract account and the path. Moving either orphans the lot. */
 export async function fetchLotAddress(lotContract: string, path: string): Promise<Address> {
-  const key = await nearView<string>(config.near.mpcSigner, "derived_public_key", { path, predecessor: lotContract, domain_id: config.near.signDomain }, "final");
+  const key = await nearView<string>(config.near.mpcSigner, "derived_public_key", { path, predecessor: lotContract, domain_id: config.near.signDomain });
   return evmAddressFromNearKey(key);
 }

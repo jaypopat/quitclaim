@@ -1,5 +1,5 @@
-import { Account, FailoverRpcProvider, JsonRpcProvider, actions, teraToGas, type KeyPairString } from "near-api-js";
-import { config, nearRpc, nearView, type LotCalls, type LotViews } from "@quitclaim/shared";
+import { Account, actions, teraToGas, type KeyPairString } from "near-api-js";
+import { nearProvider, nearView, type LotCalls, type LotViews } from "@quitclaim/shared";
 import { env } from "./env.ts";
 
 type Sent = { tx: string; url: string };
@@ -14,7 +14,7 @@ async function keyFor(accountId: string): Promise<KeyPairString> {
 }
 
 /** Signed txs fail over too. Resending the same signed tx is safe: NEAR dedupes by tx hash. */
-export const provider = () => new FailoverRpcProvider(config.near.rpcUrls.map((url) => new JsonRpcProvider({ url })));
+export const provider = () => nearProvider();
 
 export async function account(accountId: string): Promise<Account> {
   return new Account(accountId, provider(), await keyFor(accountId));
@@ -59,11 +59,5 @@ export async function getFinality(contractId: string) {
 }
 
 export async function codeHash(accountId: string): Promise<string> {
-  const body = await nearRpc<{ result?: { code_hash?: string }; error?: unknown }>("query", {
-    request_type: "view_account",
-    finality: "final",
-    account_id: accountId,
-  });
-  if (typeof body.result?.code_hash !== "string") throw new Error(`view_account failed for ${accountId}: ${JSON.stringify(body.error ?? body)}`);
-  return body.result.code_hash;
+  return (await provider().viewAccount({ accountId })).code_hash;
 }
