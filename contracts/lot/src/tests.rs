@@ -615,7 +615,7 @@ fn bump(f: Fees) -> Fees {
 fn failed_transfers() -> (Contract, Fees) {
     let mut c = held_lot();
     let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
-    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
         call(alice(), 1);
         let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
         sign_fails(&mut c);
@@ -631,7 +631,7 @@ fn burns_used_up() -> (Contract, Fees) {
     call(alice(), 1);
     let _ = c.seal(0, f);
     held_signs(&mut c);
-    for _ in 1..evm::MAX_ISSUED_PER_NONCE {
+    for _ in 1..evm::MAX_TRANSFERS_PER_NONCE {
         f = bump(f);
         call(bob(), 1);
         let _ = c.rebump(0, 0, f);
@@ -647,7 +647,7 @@ fn failed_transfers_never_use_up_the_seal_or_the_rescue() {
     let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
     let lot = c.get_lot(0).unwrap();
     let count = |nonce: u64, burn: bool| lot.issued.iter().filter(|i| i.nonce == nonce && (i.kind == Kind::Burn) == burn).count();
-    let max = evm::MAX_ISSUED_PER_NONCE;
+    let max = evm::MAX_TRANSFERS_PER_NONCE;
     assert_eq!(lot.state, LotState::Sealing);
     assert_eq!((count(0, false), count(0, true), count(1, true)), (max, max, 1), "every issued entry is kept until proof");
 }
@@ -660,12 +660,49 @@ fn transfers_per_nonce_are_bounded() {
     let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, f);
 }
 
+/// A lessee with working signing seals and unseals at minimum bumps until every signed burn sits
+/// below Base Sepolia's 5 Mwei base fee floor. A count limit on burns would then refuse the expiry
+/// seal that can mine, and the lease would never end.
 #[test]
-#[should_panic(expected = "too many burns issued at this nonce")]
-fn burns_per_nonce_are_bounded() {
-    let (mut c, f) = burns_used_up();
-    call(bob(), 1);
-    let _ = c.rebump(0, 0, f);
+fn signed_burns_below_the_base_fee_cannot_strand_an_expired_lease() {
+    let mut c = held_lease();
+    clock(TAKEN + 30_000);
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    lessee_requests(&mut c, TOKEN_UNIT, f);
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
+        f = bump(f);
+        call(bob(), 1);
+        let _ = c.seal(0, f);
+        held_signs(&mut c);
+        call(bob(), 0);
+        c.unseal(0);
+    }
+    let lot = c.get_lot(0).unwrap();
+    let burns: Vec<_> = lot.issued.iter().filter(|i| i.kind == Kind::Burn).collect();
+    assert_eq!(burns.len(), evm::MAX_TRANSFERS_PER_NONCE);
+    assert!(burns.iter().all(|i| i.tx_hash.is_some() && i.fees.max_fee.0 < 5_000_000), "every burn is signed and below the base fee");
+    clock(ENDS);
+    call(carol(), 1);
+    let _ = c.seal(0, fees(50_000_000, 10_000_000));
+    let burn = held_signs(&mut c);
+    assert!(prove_ok(&mut c, burn));
+    assert!(burned_lease_token());
+    let lot = c.get_lot(0).unwrap();
+    assert_eq!(*Contract::controller(&lot), alice());
+    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+}
+
+/// The fee floor, the 10% bump and the hard caps bound burns at one nonce without a count limit.
+#[test]
+fn burns_per_nonce_are_bounded_by_the_fee_caps() {
+    let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
+    let mut prior = Vec::new();
+    while evm::check_fees(&prior, 0, &f, &Kind::Burn).is_ok() {
+        prior.push(Issued { seq: prior.len() as u32, nonce: 0, kind: Kind::Burn, gas_limit: evm::BURN_GAS_LIMIT, fees: f, tx_hash: None, raw_tx: None });
+        f = fees((f.max_fee.0 * 11).div_ceil(10), (f.max_prio.0 * 11).div_ceil(10));
+    }
+    assert_eq!(evm::check_fees(&prior, 0, &f, &Kind::Burn), Err("fee above cap"));
+    assert!((50..=100).contains(&prior.len()), "{} burns fit under the caps", prior.len());
 }
 
 #[test]
@@ -1195,7 +1232,7 @@ fn failed_signing_cannot_strand_an_expired_lease() {
     clock(TAKEN + 30_000);
     let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
     lessee_requests(&mut c, TOKEN_UNIT, f);
-    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
         f = bump(f);
         call(bob(), 1);
         let _ = c.seal(0, f);
@@ -1230,7 +1267,7 @@ fn rebumps_under_failed_signing_re_sign_the_burn_in_place() {
     call(carol(), 1);
     let _ = c.seal(0, f);
     sign_fails(&mut c);
-    for _ in 0..evm::MAX_ISSUED_PER_NONCE {
+    for _ in 0..evm::MAX_TRANSFERS_PER_NONCE {
         f = bump(f);
         call(carol(), 1);
         let _ = c.rebump(0, 0, f);

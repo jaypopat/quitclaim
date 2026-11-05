@@ -14,11 +14,12 @@ pub const TRANSFER_FEE_CAP: u128 = 5_000_000_000;
 pub const TRANSFER_PRIO_CAP: u128 = 1_000_000_000;
 pub const BURN_FEE_CAP: u128 = 2 * TRANSFER_FEE_CAP;
 pub const BURN_PRIO_CAP: u128 = 2 * TRANSFER_PRIO_CAP;
-/// With a nonzero floor, the 10% bump makes every replacement strictly pricier, so the number of
-/// txs at one nonce is bounded by the caps; the explicit limit bounds contract-paid storage.
+/// With a nonzero floor, the 10% bump makes every replacement strictly pricier, so the fee caps
+/// bound the txs at one nonce (about 80 burns under today's caps).
 pub const MIN_FEE: u128 = 1_000_000;
-/// Per kind, so transfer attempts can never use up the burns a seal or rescue needs.
-pub const MAX_ISSUED_PER_NONCE: usize = 16;
+/// Bounds contract-paid storage for transfer attempts. Burns have no count limit: one could leave
+/// every signed burn priced below the chain's base fee and strand the lot, so only the fee caps bound them.
+pub const MAX_TRANSFERS_PER_NONCE: usize = 16;
 
 pub use alloy_primitives::Address;
 
@@ -70,11 +71,10 @@ pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Res
         return Err("priority fee above max fee");
     }
     let at_nonce = prior.iter().filter(|i| i.nonce == nonce);
-    if at_nonce.clone().filter(|i| discriminant(&i.kind) == discriminant(kind)).count() >= MAX_ISSUED_PER_NONCE {
-        return Err(match kind {
-            Kind::Transfer { .. } => "too many transfers issued at this nonce",
-            Kind::Burn => "too many burns issued at this nonce",
-        });
+    if matches!(kind, Kind::Transfer { .. })
+        && at_nonce.clone().filter(|i| matches!(i.kind, Kind::Transfer { .. })).count() >= MAX_TRANSFERS_PER_NONCE
+    {
+        return Err("too many transfers issued at this nonce");
     }
     let prev_fee = at_nonce.clone().map(|i| i.fees.max_fee.0).max();
     let prev_prio = at_nonce.map(|i| i.fees.max_prio.0).max();

@@ -55,7 +55,7 @@ Changing the lot contract account or the path scheme changes every lot address.
 
 The hardened contract removes the stored proof lock and changes `rebump`'s arguments. Deploy it to a fresh development account; existing deployments require a state migration before an upgrade.
 
-Fees have a 1 Mwei floor. Each replacement raises both fees by at least 10%, under hard caps, with at most 16 issued transfers and 16 issued burns per nonce. A burn whose signature was never recorded is signed again as it stands, not replaced, so failed signing can't use up the burns. Only burns are re-signed: any signature of a burn can only consume the nonce. If the limits prevent another replacement, transfer remains blocked until consumption is proven.
+Fees have a 1 Mwei floor. Each replacement raises both fees by at least 10%, under hard caps, with at most 16 issued transfers per nonce. Burns have no count limit, because signed burns all priced below Base's base fee floor would otherwise strand the lot; the floor, the 10% bump and the caps already bound them (about 80 per nonce). A burn whose signature was never recorded is signed again as it stands, not replaced, so failed signing can't use up the burns. Only burns are re-signed: any signature of a burn can only consume the nonce. If the limits prevent another replacement, transfer remains blocked until consumption is proven.
 
 If a transfer mines but reverts, MPC cannot prove it. During Sealing, `rescue` signs a burn at the next nonce; proving that burn proves the reverted nonce consumed too. `rebump` takes an explicit nonce so the earlier burn remains repriceable after rescue.
 
