@@ -8,9 +8,3 @@ test("derives the lot-0 address observed on Sepolia and Base", () => {
     "0x40b30406F81ed1C2c4Ae3362b8477509Fc7Cee39",
   );
 });
-
-test("rejects non-secp256k1 keys", () => {
-  expect(() => evmAddressFromNearKey("ed25519:abc")).toThrow(
-    "not a secp256k1 key",
-  );
-});

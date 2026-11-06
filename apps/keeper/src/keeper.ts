@@ -10,17 +10,36 @@ import { leaseRunOut, mustLot } from "@quitclaim/chain/lot.ts";
 import { logger } from "@quitclaim/chain/logger.ts";
 import { view } from "@quitclaim/chain/near.ts";
 import { settle } from "@quitclaim/chain/settle.ts";
-import { pendingLots } from "./pending.ts";
 
-/** Lots with a signed tx the contract hasn't seen proven yet, or a lease that has run out. */
-function pending(contract: string) {
-  return pendingLots(
-    (from_index, limit) => view(contract, "nft_tokens", { from_index, limit }),
-    async (id) => {
-      const lot = await mustLot(contract, id);
-      return lot.issued.some((i) => i.tx_hash) || leaseRunOut(lot);
-    },
-  );
+const PAGE_SIZE = 100;
+
+/**
+ * Lots with a signed tx the contract hasn't seen proven yet, or a lease that has run out. All are
+ * found before any is settled, because settling closes leases, which shrinks the enumeration under
+ * a later page's offset. A lease token (`<id>-lease`) shares its lot with the title, so only titles
+ * are inspected.
+ */
+async function pending(contract: string) {
+  const found: number[] = [];
+  let offset = 0n;
+  for (;;) {
+    const tokens = await view(contract, "nft_tokens", {
+      from_index: offset.toString(),
+      limit: PAGE_SIZE,
+    });
+    const ids = tokens
+      .filter((token) => /^\d+$/.test(token.token_id))
+      .map((token) => Number(token.token_id));
+    const lots = await Promise.all(ids.map((id) => mustLot(contract, id)));
+    found.push(
+      ...ids.filter((_, i) => {
+        const lot = lots[i]!;
+        return lot.issued.some((t) => t.tx_hash) || leaseRunOut(lot);
+      }),
+    );
+    if (tokens.length < PAGE_SIZE) return found;
+    offset += BigInt(tokens.length);
+  }
 }
 
 if (import.meta.main) {
