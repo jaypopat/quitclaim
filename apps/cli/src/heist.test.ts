@@ -3,12 +3,8 @@ import { encodeFunctionData, erc20Abi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { config } from "@quitclaim/shared";
 import { parseEvidence, type HeistEvidence } from "./heist-evidence.ts";
-import {
-  replayError,
-  verifyHeist,
-  type HeistIO,
-  type Observation,
-} from "./heist.ts";
+import { replayError, type Observation } from "./heist-observe.ts";
+import { verifyHeist, type HeistIO } from "./heist.ts";
 
 const published = parseEvidence(
   await Bun.file(

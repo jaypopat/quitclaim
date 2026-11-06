@@ -54,13 +54,13 @@ export class Run {
     });
   }
 
-  record(
-    step: string,
-    expect: string,
-    got: string,
-    pass: boolean,
-    links: string[] = [],
-  ) {
+  record({
+    step,
+    expect,
+    got,
+    pass,
+    links = [],
+  }: Omit<Row, "links"> & { links?: string[] }) {
     this.rows.push({ step, expect, got, links, pass });
     this.log[pass ? "info" : "error"](
       { step, expect, got, pass, links },

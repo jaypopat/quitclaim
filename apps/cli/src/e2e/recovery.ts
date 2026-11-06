@@ -37,13 +37,13 @@ export async function recovery(run: Run) {
     minter: alice,
   });
   run.lots.push({ id: p.id, address: p.address });
-  run.record(
-    "provision",
-    "fresh lot with a clean Sablier stream",
-    `lot ${p.id} at ${p.address}, stream ${p.streamId}`,
-    p.title.clean,
-    [p.mint.url],
-  );
+  run.record({
+    step: "provision",
+    expect: "fresh lot with a clean Sablier stream",
+    got: `lot ${p.id} at ${p.address}, stream ${p.streamId}`,
+    pass: p.title.clean,
+    links: [p.mint.url],
+  });
   const id = p.id;
 
   const low = await withdrawTo(alice, id, aliceEvm, {
@@ -52,13 +52,17 @@ export async function recovery(run: Run) {
   const lowRaw = raw(low.req);
   const sent = lowRaw ? await base.broadcast(lowRaw) : null;
   const lowHash = sent && "hash" in sent ? sent.hash : null;
-  run.record(
-    "alice broadcasts first",
-    "her withdrawal is in the pool but priced below the base fee, so it can't mine yet",
-    sent ? sent.status : low.req.ok ? "no raw" : low.req.error,
-    sent?.status === "sent" || sent?.status === "known",
-    [...low.links, ...(lowHash ? [`pending ${base.txUrl(lowHash)}`] : [])],
-  );
+  run.record({
+    step: "alice broadcasts first",
+    expect:
+      "her withdrawal is in the pool but priced below the base fee, so it can't mine yet",
+    got: sent ? sent.status : low.req.ok ? "no raw" : low.req.error,
+    pass: sent?.status === "sent" || sent?.status === "known",
+    links: [
+      ...low.links,
+      ...(lowHash ? [`pending ${base.txUrl(lowHash)}`] : []),
+    ],
+  });
 
   const s = await seal(contract, alice, id, {
     max_fee: "1100000",
@@ -70,28 +74,30 @@ export async function recovery(run: Run) {
     : null;
   const earlyRescue = await rescue(contract, bob, id);
   const bumped = await rebump(contract, bob, id, 0);
-  run.record(
-    "rebump the stuck burn after a rescue",
-    "the burn at nonce 0 stays repriceable with a rescue at nonce 1",
-    `stalled broadcast=${stalledBroadcast?.status}; rescue=${earlyRescue.ok}; rebump=${bumped.ok}`,
-    s.ok &&
+  run.record({
+    step: "rebump the stuck burn after a rescue",
+    expect: "the burn at nonce 0 stays repriceable with a rescue at nonce 1",
+    got: `stalled broadcast=${stalledBroadcast?.status}; rescue=${earlyRescue.ok}; rebump=${bumped.ok}`,
+    pass:
+      s.ok &&
       (stalledBroadcast?.status === "sent" ||
         stalledBroadcast?.status === "known") &&
       earlyRescue.ok &&
       bumped.ok,
-    [s.url, earlyRescue.url, bumped.url],
-  );
+    links: [s.url, earlyRescue.url, bumped.url],
+  });
 
   const r = await settle(contract, keeper, id);
   const gone = lowHash ? (await base.receipt(lowHash)) === null : false;
   const again = lowRaw ? await base.broadcast(lowRaw) : null;
-  run.record(
-    "burn replaces the pending withdrawal",
-    "burn mines at her nonce, her tx never mines, rebroadcast is rejected",
-    `${r.lot.state}; alice's tx mined=${!gone}; rebroadcast: ${firstLine(again)}`,
-    r.lot.state === "Clean" && gone && again?.status === "nonce-too-low",
-    settleLinks(r.steps),
-  );
+  run.record({
+    step: "burn replaces the pending withdrawal",
+    expect:
+      "burn mines at her nonce, her tx never mines, rebroadcast is rejected",
+    got: `${r.lot.state}; alice's tx mined=${!gone}; rebroadcast: ${firstLine(again)}`,
+    pass: r.lot.state === "Clean" && gone && again?.status === "nonce-too-low",
+    links: settleLinks(r.steps),
+  });
 
   const u = await call(alice, contract, "unseal", { id });
   const held = await base.tokenBalance(p.token, p.address);
@@ -100,35 +106,38 @@ export async function recovery(run: Run) {
     gasLimit: 80_000,
   });
   const rv = await settle(contract, keeper, id);
-  run.record(
-    "transfer mines but reverts",
-    "more than the lot holds: the tx consumes the nonce but can never be proven",
-    `reverted=${rv.reverted}, proven=${rv.proven}, next_nonce ${rv.lot.next_nonce}`,
-    rv.reverted && !rv.proven,
-    [u.url, bad.url, ...settleLinks(rv.steps)],
-  );
+  run.record({
+    step: "transfer mines but reverts",
+    expect:
+      "more than the lot holds: the tx consumes the nonce but can never be proven",
+    got: `reverted=${rv.reverted}, proven=${rv.proven}, next_nonce ${rv.lot.next_nonce}`,
+    pass: rv.reverted && !rv.proven,
+    links: [u.url, bad.url, ...settleLinks(rv.steps)],
+  });
 
   const s2 = await seal(contract, alice, id);
   const rr = await settle(contract, keeper, id);
-  run.record(
-    "keeper rescues the reverted nonce",
-    "the keeper signs a burn at the next nonce; proving it proves the stuck one: Clean",
-    `${rr.lot.state} v${rr.lot.version}, next_nonce ${rr.lot.next_nonce}`,
-    rr.lot.state === "Clean" &&
+  run.record({
+    step: "keeper rescues the reverted nonce",
+    expect:
+      "the keeper signs a burn at the next nonce; proving it proves the stuck one: Clean",
+    got: `${rr.lot.state} v${rr.lot.version}, next_nonce ${rr.lot.next_nonce}`,
+    pass:
+      rr.lot.state === "Clean" &&
       rr.lot.next_nonce === rv.lot.next_nonce + 2 &&
       rr.steps.some((x) => x.kind === "rescue"),
-    [s2.url, ...settleLinks(rr.steps)],
-  );
+    links: [s2.url, ...settleLinks(rr.steps)],
+  });
 
   const proceedsBefore = await proceeds(alice);
   const t = await transferTitle(alice, id);
   const moved = await lotOf(id);
   const proceedsAfter = await proceeds(alice);
-  run.record(
-    "direct transfer",
-    "nft_transfer from Clean moves the title and pays no royalty",
-    `${moved.owner} ${moved.state}; minter proceeds ${proceedsBefore} -> ${proceedsAfter}`,
-    t.ok && moved.owner === bob && proceedsBefore === proceedsAfter,
-    [t.url],
-  );
+  run.record({
+    step: "direct transfer",
+    expect: "nft_transfer from Clean moves the title and pays no royalty",
+    got: `${moved.owner} ${moved.state}; minter proceeds ${proceedsBefore} -> ${proceedsAfter}`,
+    pass: t.ok && moved.owner === bob && proceedsBefore === proceedsAfter,
+    links: [t.url],
+  });
 }

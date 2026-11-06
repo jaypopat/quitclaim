@@ -14,13 +14,15 @@ export async function minting(run: Run) {
   const name = `e2e-minting-${run.started.getTime()}`;
   const address = await fetchLotAddress(contract, `${alice}/${name}`);
   const stream = await sablier.createStream(address, 2n * 10n ** 6n, 3_600);
-  run.record(
-    "alice creates a stream to her lot address",
-    "non-cancelable, non-transferable, paying alice's namespaced lot address",
-    `stream ${stream.id} pays ${address}`,
-    (await sablier.titleSearch(stream.id, address, config.evm.token)).clean,
-    [`stream ${base.txUrl(stream.tx)}`],
-  );
+  run.record({
+    step: "alice creates a stream to her lot address",
+    expect:
+      "non-cancelable, non-transferable, paying alice's namespaced lot address",
+    got: `stream ${stream.id} pays ${address}`,
+    pass: (await sablier.titleSearch(stream.id, address, config.evm.token))
+      .clean,
+    links: [`stream ${base.txUrl(stream.tx)}`],
+  });
   await base.waitFinality(stream.block, await getFinality(contract));
 
   const front = await call(
@@ -30,13 +32,14 @@ export async function minting(run: Run) {
     { name, owner_id: bob, royalty_bps: 0, log: stream.log },
     { deposit: MINT_DEPOSIT },
   );
-  run.record(
-    "bob front-runs the mint with alice's log",
-    "rolled back: bob's path derives a different address than the stream pays",
-    front.ok ? `returned ${JSON.stringify(front.value)}` : front.error,
-    front.ok && front.value === null,
-    [front.url],
-  );
+  run.record({
+    step: "bob front-runs the mint with alice's log",
+    expect:
+      "rolled back: bob's path derives a different address than the stream pays",
+    got: front.ok ? `returned ${JSON.stringify(front.value)}` : front.error,
+    pass: front.ok && front.value === null,
+    links: [front.url],
+  });
 
   const mine = await call(
     alice,
@@ -46,21 +49,23 @@ export async function minting(run: Run) {
     { deposit: MINT_DEPOSIT },
   );
   const lot = mine.ok && mine.value ? await lotOf(mine.value.id) : null;
-  run.record(
-    "alice mints",
-    "MPC attests the creation log; the title binds the stream and token, minter = alice",
-    lot
+  run.record({
+    step: "alice mints",
+    expect:
+      "MPC attests the creation log; the title binds the stream and token, minter = alice",
+    got: lot
       ? `lot ${mine.ok && mine.value?.id} ${lot.state}, path ${lot.path}, stream ${lot.source?.id}`
       : mine.ok
         ? "rolled back"
         : mine.error,
-    !!lot &&
+    pass:
+      !!lot &&
       lot.state === "Active" &&
       lot.path === `${alice}/${name}` &&
       lot.minter === alice &&
       lot.source?.id === stream.id.toString(),
-    [mine.url],
-  );
+    links: [mine.url],
+  });
   if (mine.ok && mine.value)
     run.lots.push({ id: mine.value.id, address: mine.value.address });
 
@@ -79,11 +84,12 @@ export async function minting(run: Run) {
     { name: otherName, owner_id: alice, royalty_bps: 0, log: cancelable.log },
     { deposit: MINT_DEPOSIT },
   );
-  run.record(
-    "mint against a cancelable stream",
-    "refused before any MPC call: the stream sender could take the position back",
-    refused.ok ? "minted!" : refused.error,
-    !refused.ok && refused.error.includes("stream is cancelable"),
-    [`stream ${base.txUrl(cancelable.tx)}`, refused.url],
-  );
+  run.record({
+    step: "mint against a cancelable stream",
+    expect:
+      "refused before any MPC call: the stream sender could take the position back",
+    got: refused.ok ? "minted!" : refused.error,
+    pass: !refused.ok && refused.error.includes("stream is cancelable"),
+    links: [`stream ${base.txUrl(cancelable.tx)}`, refused.url],
+  });
 }
