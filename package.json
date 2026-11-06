@@ -18,15 +18,15 @@
     "test:sandbox": "bun run build:lot && cargo near build non-reproducible-wasm --manifest-path tests/mpc-fixture/Cargo.toml && cargo test -p quitclaim-sandbox -- --nocapture",
     "build:release": "cargo near build reproducible-wasm --manifest-path contracts/lot/Cargo.toml",
     "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run test:sandbox",
-    "deploy-lot": "bun packages/ops/src/deploy-lot.ts",
-    "lot-address": "bun packages/ops/src/lot-address.ts",
+    "deploy-lot": "bun apps/cli/src/deploy-lot.ts",
+    "lot-address": "bun apps/cli/src/lot-address.ts",
     "abi": "bun packages/shared/scripts/gen-abi.ts",
-    "e2e": "bun packages/ops/src/e2e/index.ts",
-    "heist": "bun --no-env-file packages/ops/src/heist.ts",
-    "test:heist": "bun --no-env-file packages/ops/src/heist-live.ts",
-    "keeper": "bun packages/ops/src/keeper.ts",
-    "cash-out": "bun packages/ops/src/cash-out.ts",
-    "freeze": "bun packages/ops/src/freeze.ts"
+    "e2e": "bun apps/cli/src/e2e/index.ts",
+    "heist": "bun --no-env-file apps/cli/src/heist.ts",
+    "test:heist": "bun --no-env-file apps/cli/src/heist-live.ts",
+    "keeper": "bun apps/keeper/src/keeper.ts",
+    "cash-out": "bun apps/cli/src/cash-out.ts",
+    "freeze": "bun apps/cli/src/freeze.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.4"

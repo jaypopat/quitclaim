@@ -1,10 +1,10 @@
 import type { Address, Hex } from "viem";
 import { nearToYocto } from "near-api-js";
 import type { Lot, RequestTransferResult } from "@quitclaim/shared";
-import * as base from "../base.ts";
-import { env } from "../env.ts";
-import { mustLot, pullSource, requestTransfer } from "../lot.ts";
-import { call, view, YOCTO, type CallOutcome } from "../near.ts";
+import * as base from "@quitclaim/chain/base.ts";
+import { env } from "@quitclaim/chain/env.ts";
+import { mustLot, pullSource, requestTransfer } from "@quitclaim/chain/lot.ts";
+import { call, view, YOCTO, type CallOutcome } from "@quitclaim/chain/near.ts";
 
 export const contract = env.lotContract();
 export const alice = env.alice();

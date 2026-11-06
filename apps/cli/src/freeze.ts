@@ -8,15 +8,15 @@
 import { Glob } from "bun";
 import { PublicKey, actions } from "near-api-js";
 import { scenarioNames } from "./e2e/names.ts";
-import { env } from "./env.ts";
-import { logger } from "./logger.ts";
+import { env } from "@quitclaim/chain/env.ts";
+import { logger } from "@quitclaim/chain/logger.ts";
 import {
   account,
   codeHash,
   fullAccessKeys,
   getFinality,
   nearTxUrl,
-} from "./near.ts";
+} from "@quitclaim/chain/near.ts";
 
 const contractId = env.lotContract();
 

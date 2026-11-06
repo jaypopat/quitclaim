@@ -1,0 +1,8 @@
+{
+  "name": "@quitclaim/keeper",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@quitclaim/chain": "workspace:*"
+  }
+}

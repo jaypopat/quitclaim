@@ -1,4 +1,4 @@
-import { logger } from "./logger.ts";
+import { logger } from "@quitclaim/chain/logger.ts";
 import { fetchLotAddress } from "@quitclaim/shared";
 
 const [lotContract, path] = Bun.argv.slice(2);

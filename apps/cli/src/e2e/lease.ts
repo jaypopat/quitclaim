@@ -5,8 +5,8 @@
  * keeper seals and proves, the lease token burns, Carol's kept transfer is rejected, and Alice
  * withdraws again.
  */
-import * as base from "../base.ts";
-import { settle } from "../keeper.ts";
+import * as base from "@quitclaim/chain/base.ts";
+import { settle } from "@quitclaim/chain/settle.ts";
 import {
   buy,
   leaseLeft,
@@ -16,8 +16,8 @@ import {
   requestTransfer,
   seal,
   takeLease,
-} from "../lot.ts";
-import { call, getFinality, view } from "../near.ts";
+} from "@quitclaim/chain/lot.ts";
+import { call, getFinality, view } from "@quitclaim/chain/near.ts";
 import {
   alice,
   aliceEvm,

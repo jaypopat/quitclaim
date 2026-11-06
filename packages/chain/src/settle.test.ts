@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { provenMined, type SettleStep } from "./keeper.ts";
+import { provenMined, type SettleStep } from "./settle.ts";
 
 const hash = `0x${"11".repeat(32)}` as const;
 const proof = (seq: number, value: boolean): SettleStep => ({

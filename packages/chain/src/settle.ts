@@ -1,20 +1,13 @@
 /**
- * The keeper settles lots: it seals a lot whose lease has run out (or ends the lease if the lot is
- * already Clean), tops up gas, broadcasts issued txs, waits for one to mine and for the contract's
- * finality, proves it, reprices a stalled burn, and rescues a lot whose outstanding tx reverted.
- * Every action it takes is permissionless on chain, so anyone can run one.
- *
- *   bun run keeper            settle every lot with unproven txs or a run-out lease once
- *   bun run keeper --watch    keep settling
+ * Settles a lot: seals it if its lease has run out (or ends the lease if it is already Clean), tops
+ * up gas, broadcasts issued txs, waits for one to mine and for the contract's finality, proves it,
+ * reprices a stalled burn, and rescues a lot whose outstanding tx reverted.
  */
 import type { Address, Hex } from "viem";
 import { isBurn, type Issued, type Lot } from "@quitclaim/shared";
 import * as base from "./base.ts";
-import { env } from "./env.ts";
 import { endLease, leaseRunOut, mustLot, rebump, rescue, seal } from "./lot.ts";
-import { call, getFinality, view, YOCTO, type CallOutcome } from "./near.ts";
-import { pendingLots } from "./pending.ts";
-import { logger } from "./logger.ts";
+import { call, getFinality, YOCTO, type CallOutcome } from "./near.ts";
 
 export type SettleStep =
   | { kind: "seal"; outcome: CallOutcome<unknown> }
@@ -193,42 +186,4 @@ export async function settle(
   if (!proven && !reverted && lot.issued.some((i) => i.tx_hash))
     throw new Error(`lot ${id}: nothing mined after ${MAX_ROUNDS} rounds`);
   return { steps, lot, proven, reverted };
-}
-
-/** Lots with a signed tx the contract hasn't seen proven yet, or a lease that has run out. */
-function pending(contract: string) {
-  return pendingLots(
-    (from_index, limit) => view(contract, "nft_tokens", { from_index, limit }),
-    async (id) => {
-      const lot = await mustLot(contract, id);
-      return lot.issued.some((i) => i.tx_hash) || leaseRunOut(lot);
-    },
-  );
-}
-
-if (import.meta.main) {
-  const contract = env.lotContract();
-  const prover = env.keeper();
-  const watch = Bun.argv.includes("--watch");
-  const log = logger.child({ command: "keeper", contract });
-  do {
-    for (const id of await pending(contract)) {
-      try {
-        const r = await settle(contract, prover, id);
-        log.info(
-          {
-            lot: id,
-            state: r.lot.state,
-            nextNonce: r.lot.next_nonce,
-            proven: r.proven,
-            reverted: r.reverted,
-          },
-          "Settlement completed",
-        );
-      } catch (err) {
-        log.error({ err, lot: id }, "Settlement failed");
-      }
-    }
-    if (watch) await Bun.sleep(30_000);
-  } while (watch);
 }

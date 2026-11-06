@@ -5,9 +5,9 @@
  * to Carol: three owners, one address.
  */
 import { config, isBurn } from "@quitclaim/shared";
-import * as base from "../base.ts";
+import * as base from "@quitclaim/chain/base.ts";
 import { retainedTx } from "../heist-evidence.ts";
-import { provenMined, settle } from "../keeper.ts";
+import { provenMined, settle } from "@quitclaim/chain/settle.ts";
 import {
   buy,
   list,
@@ -17,8 +17,8 @@ import {
   requestTransfer,
   seal,
   withdraw,
-} from "../lot.ts";
-import * as sablier from "../sablier.ts";
+} from "@quitclaim/chain/lot.ts";
+import * as sablier from "@quitclaim/chain/sablier.ts";
 import {
   alice,
   aliceEvm,

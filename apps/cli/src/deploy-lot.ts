@@ -14,10 +14,10 @@ import {
   teraToGas,
 } from "near-api-js";
 import { config, nearProvider } from "@quitclaim/shared";
-import { account, nearTxUrl } from "./near.ts";
-import { env } from "./env.ts";
-import { logger } from "./logger.ts";
-import { LOCKUP } from "./sablier.ts";
+import { account, nearTxUrl } from "@quitclaim/chain/near.ts";
+import { env } from "@quitclaim/chain/env.ts";
+import { logger } from "@quitclaim/chain/logger.ts";
+import { LOCKUP } from "@quitclaim/chain/sablier.ts";
 
 const [contractId, finality = "Safe"] = Bun.argv.slice(2);
 if (!contractId || !["Latest", "Safe"].includes(finality)) {

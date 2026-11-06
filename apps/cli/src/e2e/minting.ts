@@ -3,10 +3,10 @@
  * a cancelable stream is refused, and Alice mints a stream created by the separate EVM funder.
  */
 import { config, fetchLotAddress } from "@quitclaim/shared";
-import * as base from "../base.ts";
-import { MINT_DEPOSIT } from "../lot.ts";
-import { call, getFinality } from "../near.ts";
-import * as sablier from "../sablier.ts";
+import * as base from "@quitclaim/chain/base.ts";
+import { MINT_DEPOSIT } from "@quitclaim/chain/lot.ts";
+import { call, getFinality } from "@quitclaim/chain/near.ts";
+import * as sablier from "@quitclaim/chain/sablier.ts";
 import { alice, bob, contract, lotOf } from "./context.ts";
 import type { Run } from "./report.ts";
 

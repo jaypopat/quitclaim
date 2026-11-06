@@ -5,10 +5,16 @@
  */
 import type { Hex } from "viem";
 import { isBurn } from "@quitclaim/shared";
-import * as base from "../base.ts";
-import { settle } from "../keeper.ts";
-import { provision, rebump, requestTransfer, rescue, seal } from "../lot.ts";
-import { call } from "../near.ts";
+import * as base from "@quitclaim/chain/base.ts";
+import { settle } from "@quitclaim/chain/settle.ts";
+import {
+  provision,
+  rebump,
+  requestTransfer,
+  rescue,
+  seal,
+} from "@quitclaim/chain/lot.ts";
+import { call } from "@quitclaim/chain/near.ts";
 import {
   alice,
   aliceEvm,

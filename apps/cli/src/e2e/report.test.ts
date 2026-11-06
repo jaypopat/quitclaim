@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { SettleStep } from "../keeper.ts";
-import * as base from "../base.ts";
+import type { SettleStep } from "@quitclaim/chain/settle.ts";
+import * as base from "@quitclaim/chain/base.ts";
 import { settleLinks } from "./report.ts";
 
 test("settlement reports retain links for every action and omit broadcasts with no hash", () => {
