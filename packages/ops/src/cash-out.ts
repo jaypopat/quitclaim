@@ -6,6 +6,9 @@
  * broadcasts it, checks its Transfer log, hands its hash to 1Click, proves its nonce and waits for
  * the swap. `reports/cash-out-<time>.json` records the operation before signing and after each step,
  * and a run refuses to pay while an earlier record for the lot paid a swap that hasn't finished.
+ * Run one cash-out per lot at a time: a run that crashes while its `request_transfer` is still in
+ * flight on NEAR leaves a record the next run can wrongly retire, so run `bun run keeper` before
+ * retrying.
  *
  *   bun run cash-out <lot-id> <owner-account> [amount in USDC]
  */
@@ -68,6 +71,31 @@ type CashOut = {
   error?: string;
 };
 
+/** Base RPCs cap one log query at 50,000 blocks. */
+const LOG_SPAN = 50_000n;
+
+/** Whether the lot sent exactly `amount` to `to` since `from`. Anyone can log a zero-value Transfer from the lot, so the amount must match. */
+async function paidSince(
+  lot: Address,
+  to: Address,
+  amount: bigint,
+  from: bigint,
+) {
+  const head = await base.pub.getBlockNumber();
+  for (let start = from; start <= head; start += LOG_SPAN) {
+    const logs = await base.pub.getContractEvents({
+      address: config.evm.token,
+      abi: erc20Abi,
+      eventName: "Transfer",
+      args: { from: lot, to },
+      fromBlock: start,
+      toBlock: start + LOG_SPAN - 1n < head ? start + LOG_SPAN - 1n : head,
+    });
+    if (logs.some((l) => l.args.value === amount)) return true;
+  }
+  return false;
+}
+
 const wnearOf = async (account: string) =>
   BigInt(
     await nearView<string>(config.intents.wnear, "ft_balance_of", {
@@ -103,20 +131,19 @@ for (const name of new Glob("cash-out-*.json").scanSync(reportsDir)) {
   if (prior.contract !== contract || prior.lot.id !== id) continue;
   if (prior.unpaid || (prior.swap && intents.terminal.has(prior.swap.status)))
     continue;
-  const paid = await base.pub.getContractEvents({
-    address: config.evm.token,
-    abi: erc20Abi,
-    eventName: "Transfer",
-    args: { from: address, to: prior.depositAddress },
-    fromBlock: BigInt(prior.fromBlock),
-  });
+  const paid = await paidSince(
+    address,
+    prior.depositAddress,
+    BigInt(prior.amount),
+    BigInt(prior.fromBlock),
+  );
   // With nothing issued, every nonce the lot ever signed at is consumed on Base, so a payment
   // that never landed never can.
-  const resolved = paid.length
+  const resolved = paid
     ? await intents.statusWithin(prior.depositAddress, 15_000)
     : null;
-  if (!paid.length || (resolved && intents.terminal.has(resolved.status))) {
-    const update = paid.length ? { swap: resolved } : { unpaid: true };
+  if (!paid || (resolved && intents.terminal.has(resolved.status))) {
+    const update = paid ? { swap: resolved } : { unpaid: true };
     await Bun.write(
       path,
       `${JSON.stringify({ ...prior, ...update }, null, 2)}\n`,
