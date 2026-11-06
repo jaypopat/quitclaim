@@ -5,7 +5,7 @@
  * lot signs one transfer of exactly the quoted `amountIn` to the deposit address. This script
  * broadcasts it, checks its Transfer log, hands its hash to 1Click, proves its nonce and waits for
  * the swap. `reports/cash-out-<time>.json` records the operation before signing and after each step,
- * and a run refuses to pay while an earlier record for the lot has an unfinished swap.
+ * and a run refuses to pay while an earlier record for the lot paid a swap that hasn't finished.
  *
  *   bun run cash-out <lot-id> <owner-account> [amount in USDC]
  */
@@ -19,6 +19,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { fileURLToPath } from "node:url";
 import { Glob } from "bun";
 import type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";
 import { config, nearView } from "@quitclaim/shared";
@@ -39,7 +40,7 @@ if (!idArg || !owner) {
 const contract = env.lotContract();
 const id = Number(idArg);
 const startedAt = new Date().toISOString();
-const reportsDir = new URL("../../../reports/", import.meta.url).pathname;
+const reportsDir = fileURLToPath(new URL("../../../reports/", import.meta.url));
 const file = `${reportsDir}cash-out-${startedAt.replaceAll(":", "-")}.json`;
 const SWAP_WAIT_MS = 10 * 60_000;
 
@@ -55,6 +56,8 @@ type CashOut = {
   deadline: string;
   quote: Awaited<ReturnType<typeof intents.quote>>;
   wnearBefore: string;
+  fromBlock: string;
+  unpaid?: true;
   issued?: { seq: number; nonce: number; hash: Hex; request: string };
   broadcast?: base.Broadcast["status"];
   submitted?: { ok: boolean; error?: string };
@@ -97,20 +100,31 @@ const address = lot.address as Address;
 for (const name of new Glob("cash-out-*.json").scanSync(reportsDir)) {
   const path = reportsDir + name;
   const prior: CashOut = await Bun.file(path).json();
-  if (prior.contract !== contract || prior.lot.id !== id || !prior.issued)
+  if (prior.contract !== contract || prior.lot.id !== id) continue;
+  if (prior.unpaid || (prior.swap && intents.terminal.has(prior.swap.status)))
     continue;
-  if (prior.deposit?.status === "reverted") continue;
-  if (prior.swap && intents.terminal.has(prior.swap.status)) continue;
-  const now = await intents.statusWithin(prior.depositAddress, 15_000);
-  if (now && intents.terminal.has(now.status)) {
+  const paid = await base.pub.getContractEvents({
+    address: config.evm.token,
+    abi: erc20Abi,
+    eventName: "Transfer",
+    args: { from: address, to: prior.depositAddress },
+    fromBlock: BigInt(prior.fromBlock),
+  });
+  // With nothing issued, every nonce the lot ever signed at is consumed on Base, so a payment
+  // that never landed never can.
+  const resolved = paid.length
+    ? await intents.statusWithin(prior.depositAddress, 15_000)
+    : null;
+  if (!paid.length || (resolved && intents.terminal.has(resolved.status))) {
+    const update = paid.length ? { swap: resolved } : { unpaid: true };
     await Bun.write(
       path,
-      `${JSON.stringify({ ...prior, swap: now }, null, 2)}\n`,
+      `${JSON.stringify({ ...prior, ...update }, null, 2)}\n`,
     );
     continue;
   }
   throw new Error(
-    `earlier cash-out ${name} is unresolved (${now?.status ?? "no status"}); let it finish, do not pay again`,
+    `earlier cash-out ${name} paid ${prior.depositAddress} and its swap is unresolved (${resolved?.status ?? "no status"}); let it finish, do not pay again`,
   );
 }
 
@@ -120,6 +134,7 @@ const requested = amountArg
   : await base.tokenBalance(config.evm.token, address);
 if (requested === 0n) throw new Error(`lot ${id} holds no USDC to cash out`);
 const wnearBefore = await wnearOf(owner);
+const fromBlock = await base.pub.getBlockNumber();
 const quoted = await intents.quote(requested, address, owner);
 const amount = BigInt(quoted.quote.amountIn);
 
@@ -135,6 +150,7 @@ const op: CashOut = {
   deadline: quoted.quote.deadline,
   quote: quoted,
   wnearBefore: wnearBefore.toString(),
+  fromBlock: fromBlock.toString(),
 };
 const record = () => Bun.write(file, `${JSON.stringify(op, null, 2)}\n`);
 await record();
