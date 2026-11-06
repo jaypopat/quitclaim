@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "@quitclaim/shared": "workspace:*",
     "near-api-js": "7.4.0",
     "pino": "10.4.0",

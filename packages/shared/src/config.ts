@@ -16,4 +16,13 @@ export const config = {
     /** Tidepool's test USDC (6 decimals). Lots hold it; its `faucet()` mints 100 to the caller once an hour. */
     token: "0x38d81431B9f76d9699AF7517040D5221D9dEA252",
   },
+  /** Tidepool: a community-run, 1Click-compatible sandbox on the NEAR Intents verifier on testnet. */
+  intents: {
+    apiBase: "https://www.usetidepool.tech",
+    /** `evm.token` as 1Click names it. */
+    originAsset:
+      "nep141:base-0x38d81431b9f76d9699af7517040d5221d9dea252.tp-omft.testnet",
+    /** Tidepool's test wNEAR (24 decimals, no value), the NEP-141 a cash-out pays. */
+    wnear: "wnear.tidepool-sandbox.testnet",
+  },
 } as const;

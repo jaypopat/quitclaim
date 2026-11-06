@@ -24,6 +24,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run heist [evidence.json]` verifies a published handover and replays its consumed retained transaction using public RPCs. It defaults to `reports/heist.json` and needs no keys, `.env`, or funds.
 - `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: seal or end a run-out lease, gas top-up, broadcast, prove, rescue. Every action is permissionless.
+- `bun run cash-out <lot-id> <owner-account> [amount in USDC]` swaps an Active, unleased lot's USDC for Tidepool test wNEAR (no value) through Tidepool's 1Click sandbox. Only the title owner may run it. It writes `reports/cash-out-*.json` before signing and never re-quotes or pays twice. After an unresolved swap, read that record instead of rerunning. It is not an e2e scenario, because it depends on Tidepool's servers.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 - Wallet-backed ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. The keyless heist uses public RPCs without it. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 
