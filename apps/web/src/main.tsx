@@ -5,7 +5,9 @@ function App() {
   return (
     <main>
       <h1>Quitclaim</h1>
-      <p>Lots on chain {config.evm.chainId}, signed by {config.near.mpcSigner}.</p>
+      <p>
+        Lots on chain {config.evm.chainId}, signed by {config.near.mpcSigner}.
+      </p>
     </main>
   );
 }

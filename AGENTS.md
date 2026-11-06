@@ -13,6 +13,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 ## Commands
 
+- `.githooks/pre-commit` runs `fmt:check` and `bun check` (set up by `bun install` via `prepare`). Fix with `bun run fmt`.
 - `bun run verify` runs everything: typecheck, TS tests, lot test and build, EVM build and test. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.
