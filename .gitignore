@@ -38,8 +38,3 @@ spikes/
 
 # rust / near
 target/
-
-# foundry
-contracts/evm/out/
-contracts/evm/cache/
-contracts/evm/broadcast/

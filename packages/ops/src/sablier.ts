@@ -6,6 +6,8 @@
  */
 import {
   erc20Abi,
+  formatUnits,
+  parseAbi,
   parseEventLogs,
   type Address,
   type Hex,
@@ -14,7 +16,7 @@ import {
 import { sablier } from "sablier";
 import { release } from "sablier/evm/releases/lockup/v4.0";
 import { config, type CreationLog } from "@quitclaim/shared";
-import { funderAccount, pub, wallet } from "./base.ts";
+import { funderAccount, pub, tokenBalance, wallet } from "./base.ts";
 
 const lockupAbi = release.abi.SablierLockup;
 const deployment = sablier.contracts.get({
@@ -47,17 +49,32 @@ export function toCreationLog(log: Log): CreationLog {
   };
 }
 
+const faucetAbi = parseAbi(["function faucet()"]);
+
 /**
- * A non-transferable linear stream paying `recipient`, funded by the funder. Non-cancelable unless
- * `cancelable` is set, which exists only to show the contract refusing such a stream.
+ * A non-transferable linear stream of the lot token paying `recipient`, funded by the funder, who
+ * draws on the token's faucet when short. Non-cancelable unless `cancelable` is set, which exists
+ * only to show the contract refusing such a stream.
  */
 export async function createStream(
   recipient: Address,
-  token: Address,
   amount: bigint,
   durationSec: number,
   { cancelable = false } = {},
 ) {
+  const token = config.evm.token;
+  const held = await tokenBalance(token, funderAccount().address);
+  if (held < amount) {
+    const faucet = await wallet()
+      .writeContract({ address: token, abi: faucetAbi, functionName: "faucet" })
+      .catch((cause) => {
+        throw new Error(
+          `funder holds ${formatUnits(held, 6)} USDC, the stream needs ${formatUnits(amount, 6)}, and the faucet refused (it mints once an hour per address)`,
+          { cause },
+        );
+      });
+    await pub.waitForTransactionReceipt({ hash: faucet });
+  }
   const approve = await wallet().writeContract({
     address: token,
     abi: erc20Abi,

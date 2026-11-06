@@ -13,5 +13,7 @@ export const config = {
     foreignChain: "Base",
     rpcUrl: "https://base-sepolia-rpc.publicnode.com",
     explorer: "https://sepolia.basescan.org",
+    /** Tidepool's test USDC (6 decimals). Lots hold it; its `faucet()` mints 100 to the caller once an hour. */
+    token: "0x38d81431B9f76d9699AF7517040D5221D9dEA252",
   },
 } as const;

@@ -5,7 +5,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Layout
 
 - `contracts/lot` is the NEAR contract (Rust, `cargo near`, in the root Cargo workspace).
-- `contracts/evm` holds the test ERC-20 that lots hold and streams are funded in (Foundry, forge-std submodule). Lots' value comes from real Sablier Lockup v4 streams on Base Sepolia (`packages/ops/src/sablier.ts`).
+- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/ops/src/sablier.ts`).
 - `packages/shared` holds chain config and lot-address derivation.
 - `packages/ops` holds Bun scripts.
 - `apps/web` is the frontend.
@@ -14,7 +14,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Commands
 
 - `.githooks/pre-commit` runs `fmt:check` and `bun check` (set up by `bun install` via `prepare`). Fix with `bun run fmt`.
-- `bun run verify` runs everything: typecheck, TS tests, lot test and build, EVM build and test. Run it before committing.
+- `bun run verify` runs everything: ABI check, typecheck, TS tests, lot tests, Sandbox tests. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.
 - `bun run dev` serves the web app.
@@ -59,3 +59,4 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
 - A call that returns a `Promise` must be added to `resolvesVia` in `packages/shared/scripts/gen-abi.ts`, or `bun run abi` fails.
 - `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.
+- Streams are funded from the USDC `faucet()`, which mints 100 to the funder once an hour. A full `bun run e2e` uses 18, so one drip covers five runs.

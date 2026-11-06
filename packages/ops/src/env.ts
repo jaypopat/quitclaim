@@ -16,6 +16,5 @@ export const env = {
   carol: () => need("CAROL_ACCOUNT"),
   minter: () => need("MINTER_ACCOUNT"),
   keeper: () => need("KEEPER_ACCOUNT"),
-  token: () => need("TOKEN") as `0x${string}`,
   credentialsDir: `${process.env.HOME}/.near-credentials/testnet`,
 };

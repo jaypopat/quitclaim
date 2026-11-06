@@ -1,5 +1,6 @@
 import type { Address, Hex } from "viem";
 import {
+  config,
   fetchLotAddress,
   nextFees,
   type Fees,
@@ -18,7 +19,6 @@ import {
   YOCTO,
   type CallOutcome,
 } from "./near.ts";
-import { env } from "./env.ts";
 
 /** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
 export const MINT_DEPOSIT = nearToYocto("0.05");
@@ -50,15 +50,14 @@ export async function provision(opts: {
   total?: bigint;
   gasFund?: bigint;
 }): Promise<Provisioned> {
-  const token = env.token();
+  const token = config.evm.token;
   const address = await fetchLotAddress(
     opts.contract,
     `${opts.minter}/${opts.name}`,
   );
   const stream = await sablier.createStream(
     address,
-    token,
-    opts.total ?? 1_000n * 10n ** 18n,
+    opts.total ?? 5n * 10n ** 6n,
     opts.durationSec ?? 3_600,
   );
   const title = await sablier.titleSearch(stream.id, address, token);

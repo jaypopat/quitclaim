@@ -1,6 +1,2 @@
 [fmt]
-ignorePatterns = [
-  "packages/shared/src/lot.gen.ts",
-  "contracts/evm/lib/",
-  "**/*.sol",
-]
+ignorePatterns = ["packages/shared/src/lot.gen.ts"]
