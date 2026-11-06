@@ -26,12 +26,12 @@ import { fileURLToPath } from "node:url";
 import { Glob } from "bun";
 import type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";
 import { config, nearView } from "@quitclaim/shared";
-import * as base from "@quitclaim/chain/base.ts";
-import { env } from "@quitclaim/chain/env.ts";
+import * as base from "@quitclaim/sdk/base.ts";
+import { env } from "@quitclaim/sdk/env.ts";
 import * as intents from "./intents.ts";
-import { settle, type SettleStep } from "@quitclaim/chain/settle.ts";
-import { logger } from "@quitclaim/chain/logger.ts";
-import { mustLot, pullSource, requestTransfer } from "@quitclaim/chain/lot.ts";
+import { settle, type SettleStep } from "@quitclaim/sdk/settle.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
+import { mustLot, pullSource, requestTransfer } from "@quitclaim/sdk/lot.ts";
 
 const [idArg, owner, amountArg] = Bun.argv.slice(2);
 if (!idArg || !owner) {

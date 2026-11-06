@@ -11,7 +11,7 @@ import {
 } from "@defuse-protocol/one-click-sdk-typescript";
 import type { Address, Hex } from "viem";
 import { config } from "@quitclaim/shared";
-import { logger } from "@quitclaim/chain/logger.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
 
 OpenAPI.BASE = config.intents.apiBase;
 

@@ -4,15 +4,11 @@ import {
   type Hex,
   type TransactionSerialized,
 } from "viem";
-import { logger } from "@quitclaim/chain/logger.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
 import type { Finality } from "@quitclaim/shared";
-import * as base from "@quitclaim/chain/base.ts";
-import type { SettleStep } from "@quitclaim/chain/settle.ts";
-import {
-  codeHash,
-  fullAccessKeys,
-  getFinality,
-} from "@quitclaim/chain/near.ts";
+import * as base from "@quitclaim/sdk/base.ts";
+import type { SettleStep } from "@quitclaim/sdk/settle.ts";
+import { codeHash, fullAccessKeys, getFinality } from "@quitclaim/sdk/near.ts";
 import { parseEvidence, type HeistRun } from "../heist-evidence.ts";
 
 type Row = {

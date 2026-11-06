@@ -5,11 +5,11 @@
  *   bun run keeper            settle once
  *   bun run keeper --watch    keep settling
  */
-import { env } from "@quitclaim/chain/env.ts";
-import { leaseRunOut, mustLot } from "@quitclaim/chain/lot.ts";
-import { logger } from "@quitclaim/chain/logger.ts";
-import { view } from "@quitclaim/chain/near.ts";
-import { settle } from "@quitclaim/chain/settle.ts";
+import { env } from "@quitclaim/sdk/env.ts";
+import { leaseRunOut, mustLot } from "@quitclaim/sdk/lot.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
+import { view } from "@quitclaim/sdk/near.ts";
+import { settle } from "@quitclaim/sdk/settle.ts";
 
 const PAGE_SIZE = 100;
 

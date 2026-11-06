@@ -5,13 +5,13 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Layout
 
 - `contracts/lot` is the NEAR contract (Rust, `cargo near`, in the root Cargo workspace).
-- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/chain/src/sablier.ts`).
+- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/sdk/src/sablier.ts`).
 - `packages/shared` holds chain config, lot-address derivation and the contract ABI types. It is browser-safe.
-- `packages/chain` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/chain/base.ts`.
+- `packages/sdk` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/sdk/base.ts`.
 - `apps/web` is the frontend.
 - `apps/keeper` is the keeper loop. It only finds pending lots and calls `settle`.
 - `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out.
-- Dependencies point one way: apps → `packages/chain` → `packages/shared`. Apps never import each other.
+- Dependencies point one way: apps → `packages/sdk` → `packages/shared`. Apps never import each other.
 - `spikes/` is gitignored throwaway work. `spikes/notes/` holds the verified on-chain facts and tx links.
 
 ## Commands

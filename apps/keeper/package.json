@@ -3,6 +3,6 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@quitclaim/chain": "workspace:*"
+    "@quitclaim/sdk": "workspace:*"
   }
 }
