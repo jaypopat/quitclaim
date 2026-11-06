@@ -7,8 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "fmt": "bun fmt --no-script && cargo fmt --all && forge fmt --root contracts/evm",
-    "fmt:check": "bun fmt --no-script --check && cargo fmt --all --check && forge fmt --root contracts/evm --check",
+    "fmt": "bun fmt --no-script && cargo fmt --all",
+    "fmt:check": "bun fmt --no-script --check && cargo fmt --all --check",
     "prepare": "git config core.hooksPath .githooks",
     "dev": "bun --filter @quitclaim/web dev",
     "typecheck": "bun check",
@@ -17,9 +17,7 @@
     "test:lot": "cargo test -p quitclaim-lot",
     "test:sandbox": "bun run build:lot && cargo near build non-reproducible-wasm --manifest-path tests/mpc-fixture/Cargo.toml && cargo test -p quitclaim-sandbox -- --nocapture",
     "build:release": "cargo near build reproducible-wasm --manifest-path contracts/lot/Cargo.toml",
-    "build:evm": "cd contracts/evm && forge build",
-    "test:evm": "cd contracts/evm && forge test",
-    "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run test:sandbox && bun run build:evm && bun run test:evm",
+    "verify": "bun run abi --check && bun run typecheck && bun run test && bun run test:lot && bun run test:sandbox",
     "deploy-lot": "bun packages/ops/src/deploy-lot.ts",
     "lot-address": "bun packages/ops/src/lot-address.ts",
     "abi": "bun packages/shared/scripts/gen-abi.ts",
@@ -27,6 +25,7 @@
     "heist": "bun --no-env-file packages/ops/src/heist.ts",
     "test:heist": "bun --no-env-file packages/ops/src/heist-live.ts",
     "keeper": "bun packages/ops/src/keeper.ts",
+    "cash-out": "bun packages/ops/src/cash-out.ts",
     "freeze": "bun packages/ops/src/freeze.ts"
   },
   "devDependencies": {

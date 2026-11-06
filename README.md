@@ -57,10 +57,11 @@ sequenceDiagram
     Base-->>Alice: nonce too low
 ```
 
-- **Value:** a real Sablier Lockup v4 stream pays the lot address, non-cancelable and non-transferable. Anyone can pull it into the lot; only the controller can move tokens out.
+- **Value:** a real Sablier Lockup v4 stream of Tidepool's test USDC pays the lot address, non-cancelable and non-transferable. Anyone can pull it into the lot; only the controller can move tokens out.
 - **Signing policy:** the contract only signs what it builds, an ERC-20 transfer of the lot's token or a nonce burn, and only for the current controller.
 - **Minting:** no admin. `mint_proven` takes the stream's creation log, checks it pays the derived lot address, and has MPC attest that exact log on Base.
 - **Handover:** a lot changes hands only when Clean, meaning every signature it issued is proven consumed.
+- **Cash-out:** `bun run cash-out` swaps a lot's USDC for Tidepool test wNEAR (no value) on NEAR, as in this [Base deposit](https://sepolia.basescan.org/tx/0xa947e23f55253fa6e7d080a6a557a9a210dc02d2b75e66957121fc6649f2bde0) and [NEAR payout](https://testnet.nearblocks.io/txns/B272rVHcmYiqpQgQi8RdjqkpX7Cm26N4SByrqginAQvm). It is a cross-chain cash-out through Tidepool's community-run, 1Click-compatible sandbox on the NEAR Intents verifier, with custodial deposit addresses, trusted bridges, one solver and no SLA. The core proof doesn't depend on it.
 
 ## Why NEAR
 
@@ -75,22 +76,22 @@ Chain Signatures give the contract a native Base address it signs for under its 
 
 ## Develop
 
-Needs Bun, Rust 1.96 (`wasm32-unknown-unknown`), `cargo-near` and Foundry.
+Needs Bun, Rust 1.96 (`wasm32-unknown-unknown`) and `cargo-near`.
 
 ```sh
-git submodule update --init
 bun install
 bun run verify
 ```
 
-| Command                                            | What it does                                                          |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| `bun run verify`                                   | ABI check, type-check, unit tests, Sandbox tests, EVM build and tests |
-| `bun run e2e [minting\|handover\|recovery\|lease]` | Adversarial suite against testnet; reports in `reports/`              |
-| `bun run keeper [--watch]`                         | Permissionless settling: gas, broadcast, prove, rescue, lease expiry  |
-| `bun run deploy-lot <account> [Latest\|Safe]`      | Deploy the lot contract                                               |
-| `bun run build:release`                            | Reproducible build for the final deployment                           |
-| `bun run freeze`                                   | Delete the contract's keys after a passing Safe run. Irreversible     |
+| Command                                            | What it does                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------- |
+| `bun run verify`                                   | ABI check, type-check, unit tests, Sandbox tests                          |
+| `bun run e2e [minting\|handover\|recovery\|lease]` | Adversarial suite against testnet; reports in `reports/`                  |
+| `bun run keeper [--watch]`                         | Permissionless settling: gas, broadcast, prove, rescue, lease expiry      |
+| `bun run cash-out <lot-id> <owner> [usdc]`         | Swap a lot's USDC for Tidepool test wNEAR (no value) through NEAR Intents |
+| `bun run deploy-lot <account> [Latest\|Safe]`      | Deploy the lot contract                                                   |
+| `bun run build:release`                            | Reproducible build for the final deployment                               |
+| `bun run freeze`                                   | Delete the contract's keys after a passing Safe run. Irreversible         |
 
 Ops diagnostics use Pino on stderr, with readable terminal output and JSON when redirected. Set `LOG_LEVEL=warn` to reduce diagnostic output. Command results such as `lot-address` and the heist transcript stay on stdout.
 

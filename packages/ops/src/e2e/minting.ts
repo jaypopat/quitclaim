@@ -2,9 +2,8 @@
  * Minting without a trusted admin: a front-runner can't take a title over someone else's stream,
  * a cancelable stream is refused, and Alice mints a stream created by the separate EVM funder.
  */
-import { fetchLotAddress } from "@quitclaim/shared";
+import { config, fetchLotAddress } from "@quitclaim/shared";
 import * as base from "../base.ts";
-import { env } from "../env.ts";
 import { MINT_DEPOSIT } from "../lot.ts";
 import { call, getFinality } from "../near.ts";
 import * as sablier from "../sablier.ts";
@@ -12,20 +11,14 @@ import { alice, bob, contract, lotOf } from "./context.ts";
 import type { Run } from "./report.ts";
 
 export async function minting(run: Run) {
-  const token = env.token();
   const name = `e2e-minting-${run.started.getTime()}`;
   const address = await fetchLotAddress(contract, `${alice}/${name}`);
-  const stream = await sablier.createStream(
-    address,
-    token,
-    100n * 10n ** 18n,
-    3_600,
-  );
+  const stream = await sablier.createStream(address, 2n * 10n ** 6n, 3_600);
   run.record(
     "alice creates a stream to her lot address",
     "non-cancelable, non-transferable, paying alice's namespaced lot address",
     `stream ${stream.id} pays ${address}`,
-    (await sablier.titleSearch(stream.id, address, token)).clean,
+    (await sablier.titleSearch(stream.id, address, config.evm.token)).clean,
     [`stream ${base.txUrl(stream.tx)}`],
   );
   await base.waitFinality(stream.block, await getFinality(contract));
@@ -75,8 +68,7 @@ export async function minting(run: Run) {
   const otherAddress = await fetchLotAddress(contract, `${alice}/${otherName}`);
   const cancelable = await sablier.createStream(
     otherAddress,
-    token,
-    10n * 10n ** 18n,
+    10n ** 6n,
     3_600,
     { cancelable: true },
   );

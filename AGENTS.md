@@ -5,7 +5,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Layout
 
 - `contracts/lot` is the NEAR contract (Rust, `cargo near`, in the root Cargo workspace).
-- `contracts/evm` holds the test ERC-20 that lots hold and streams are funded in (Foundry, forge-std submodule). Lots' value comes from real Sablier Lockup v4 streams on Base Sepolia (`packages/ops/src/sablier.ts`).
+- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/ops/src/sablier.ts`).
 - `packages/shared` holds chain config and lot-address derivation.
 - `packages/ops` holds Bun scripts.
 - `apps/web` is the frontend.
@@ -14,7 +14,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Commands
 
 - `.githooks/pre-commit` runs `fmt:check` and `bun check` (set up by `bun install` via `prepare`). Fix with `bun run fmt`.
-- `bun run verify` runs everything: typecheck, TS tests, lot test and build, EVM build and test. Run it before committing.
+- `bun run verify` runs everything: ABI check, typecheck, TS tests, lot tests, Sandbox tests. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.
 - `bun run dev` serves the web app.
@@ -24,6 +24,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run heist [evidence.json]` verifies a published handover and replays its consumed retained transaction using public RPCs. It defaults to `reports/heist.json` and needs no keys, `.env`, or funds.
 - `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: seal or end a run-out lease, gas top-up, broadcast, prove, rescue. Every action is permissionless.
+- `bun run cash-out <lot-id> <owner-account> [amount in USDC]` swaps an Active, unleased lot's USDC for Tidepool test wNEAR (no value) through Tidepool's 1Click sandbox. Only the title owner may run it. It writes `reports/cash-out-*.json` before signing and never re-quotes or pays twice. After an unresolved swap, read that record instead of rerunning. It is not an e2e scenario, because it depends on Tidepool's servers.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 - Wallet-backed ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. The keyless heist uses public RPCs without it. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 
@@ -59,3 +60,4 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - The funder key is in the root `.env` (gitignored, 0600). Never print or commit it.
 - A call that returns a `Promise` must be added to `resolvesVia` in `packages/shared/scripts/gen-abi.ts`, or `bun run abi` fails.
 - `Safe` finality on Base Sepolia takes ~5–7 min per proof. Use a `Latest` contract for fast iteration.
+- Streams are funded from the USDC `faucet()`, which mints 100 to the funder once an hour. A full `bun run e2e` uses 18, so one drip covers five runs.
