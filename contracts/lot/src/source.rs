@@ -4,8 +4,10 @@
 //! at the contract's finality. The request and its expected payload hash come from `near-mpc-sdk`.
 
 use alloy_primitives::{B256, U256};
-use alloy_sol_types::{sol, SolEvent};
-use near_mpc_contract_interface::types::{DomainId, EvmLog, EvmTxId, VerifyForeignTransactionRequestArgs};
+use alloy_sol_types::{SolEvent, sol};
+use near_mpc_contract_interface::types::{
+    DomainId, EvmLog, EvmTxId, VerifyForeignTransactionRequestArgs,
+};
 use near_mpc_sdk::foreign_chain::ForeignChainRequestBuilder;
 use near_sdk::json_types::U128;
 use near_sdk::near;
@@ -63,7 +65,10 @@ pub struct CreationLog {
 
 impl CreationLog {
     pub fn to_evm_log(&self) -> Result<EvmLog, &'static str> {
-        serde_json::to_value(self).ok().and_then(|v| serde_json::from_value(v).ok()).ok_or("log hashes, address or topics are malformed")
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|v| serde_json::from_value(v).ok())
+            .ok_or("log hashes, address or topics are malformed")
     }
 }
 
@@ -106,15 +111,23 @@ impl Schedule {
         if unlocks >= self.deposit.0 {
             return self.deposit.0;
         }
-        let from = if self.cliff == 0 { self.start } else { self.cliff };
+        let from = if self.cliff == 0 {
+            self.start
+        } else {
+            self.cliff
+        };
         let units = U256::from((t - from) / self.granularity);
-        let streamed = units * U256::from(self.deposit.0 - unlocks) * U256::from(self.granularity) / U256::from(self.end - from);
+        let streamed = units * U256::from(self.deposit.0 - unlocks) * U256::from(self.granularity)
+            / U256::from(self.end - from);
         unlocks + streamed.to::<u128>()
     }
 }
 
 fn log_data(log: &EvmLog) -> Result<Vec<u8>, &'static str> {
-    let hex = log.data.strip_prefix("0x").ok_or("log data must start with 0x")?;
+    let hex = log
+        .data
+        .strip_prefix("0x")
+        .ok_or("log data must start with 0x")?;
     if hex.len() / 2 > MAX_LOG_DATA_BYTES {
         return Err("log data must be hex of at most 1024 bytes");
     }
@@ -132,7 +145,8 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
         return Err("log is not from the configured Sablier Lockup");
     }
     let topics = log.topics.iter().map(|t| B256::from(t.0));
-    let event = CreateLockupLinearStream::decode_raw_log(topics, &data).map_err(|_| "log is not CreateLockupLinearStream")?;
+    let event = CreateLockupLinearStream::decode_raw_log(topics, &data)
+        .map_err(|_| "log is not CreateLockupLinearStream")?;
     let common = event.commonParams;
     if common.cancelable {
         return Err("stream is cancelable");
@@ -141,7 +155,10 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
         return Err("stream is transferable");
     }
     Ok(Stream {
-        id: event.streamId.try_into().map_err(|_| "stream id exceeds u128")?,
+        id: event
+            .streamId
+            .try_into()
+            .map_err(|_| "stream id exceeds u128")?,
         recipient: common.recipient,
         token: common.token,
         schedule: Schedule {
@@ -157,7 +174,10 @@ pub fn decode(log: &EvmLog, lockup: &Address) -> Result<Stream, &'static str> {
 }
 
 /// A Base request for this tx that MPC answers only if it extracts exactly `log` at `log.log_index`.
-pub fn verify_request(log: &EvmLog, f: Finality) -> Result<VerifyForeignTransactionRequestArgs, &'static str> {
+pub fn verify_request(
+    log: &EvmLog,
+    f: Finality,
+) -> Result<VerifyForeignTransactionRequestArgs, &'static str> {
     let (_, args) = ForeignChainRequestBuilder::new_base()
         .with_tx_id(EvmTxId::from(log.transaction_hash.0))
         .with_finality(mpc::evm_finality(f))

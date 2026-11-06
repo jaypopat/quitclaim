@@ -1,9 +1,14 @@
 //! Calls to the MPC signer, built from its own interface and SDK crates (pinned to the revision
 //! `v1.signer-prod.testnet` runs), so request and response shapes can't drift from the contract.
 
-use near_mpc_contract_interface::call_args::{DerivedPublicKeyArgs, SignArgs, VerifyForeignTransactionArgs};
+use near_mpc_contract_interface::call_args::{
+    DerivedPublicKeyArgs, SignArgs, VerifyForeignTransactionArgs,
+};
 use near_mpc_contract_interface::deposits::SIGN_DEPOSIT_YOCTONEAR;
-use near_mpc_contract_interface::types::{DomainId, EvmFinality, EvmTxId, Payload, PublicKey, SignatureResponse, VerifyForeignTransactionRequestArgs};
+use near_mpc_contract_interface::types::{
+    DomainId, EvmFinality, EvmTxId, Payload, PublicKey, SignatureResponse,
+    VerifyForeignTransactionRequestArgs,
+};
 use near_mpc_sdk::foreign_chain::ForeignChainRequestBuilder;
 use near_mpc_sdk::sign::SignRequestBuilder;
 use near_sdk::serde_json;
@@ -11,7 +16,9 @@ use near_sdk::{AccountId, Gas, NearToken};
 
 use crate::types::Finality;
 
-pub use near_mpc_contract_interface::method_names::{DERIVED_PUBLIC_KEY, SIGN, VERIFY_FOREIGN_TRANSACTION};
+pub use near_mpc_contract_interface::method_names::{
+    DERIVED_PUBLIC_KEY, SIGN, VERIFY_FOREIGN_TRANSACTION,
+};
 
 pub const SIGN_DOMAIN: u64 = 0;
 pub const FOREIGN_TX_DOMAIN: u64 = 3;
@@ -29,8 +36,16 @@ pub fn sign_args(path: &str, payload: &[u8; 32]) -> Vec<u8> {
 }
 
 pub fn derived_key_args(path: &str, predecessor: &AccountId) -> Vec<u8> {
-    let predecessor = predecessor.as_str().parse().expect("a NEAR account id is a valid MPC account id");
-    serde_json::to_vec(&DerivedPublicKeyArgs::new(path.to_string(), Some(predecessor), Some(DomainId(SIGN_DOMAIN)))).unwrap()
+    let predecessor = predecessor
+        .as_str()
+        .parse()
+        .expect("a NEAR account id is a valid MPC account id");
+    serde_json::to_vec(&DerivedPublicKeyArgs::new(
+        path.to_string(),
+        Some(predecessor),
+        Some(DomainId(SIGN_DOMAIN)),
+    ))
+    .unwrap()
 }
 
 pub fn evm_finality(f: Finality) -> EvmFinality {
@@ -58,7 +73,9 @@ pub fn verify_args(request: VerifyForeignTransactionRequestArgs) -> Vec<u8> {
 
 /// (r, s, v). `v` is the MPC recovery id used as EIP-1559 yParity unchanged.
 pub fn parse_signature(response: SignatureResponse) -> Option<([u8; 32], [u8; 32], u8)> {
-    let SignatureResponse::Secp256k1(sig) = response else { return None };
+    let SignatureResponse::Secp256k1(sig) = response else {
+        return None;
+    };
     let r: [u8; 32] = sig.big_r.affine_point[1..33].try_into().ok()?;
     Some((r, sig.s.scalar, sig.recovery_id))
 }

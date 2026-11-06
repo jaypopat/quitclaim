@@ -5,9 +5,12 @@
 
 use near_contract_standards::non_fungible_token::events::{NftBurn, NftMint};
 use near_sdk::json_types::U128;
-use near_sdk::{env, near, require, AccountId};
+use near_sdk::{AccountId, env, near, require};
 
-use crate::{nft, sale, Contract, ContractExt, Item, Kind, Lease, LeaseBudget, LeaseOffer, Lot, LotId, LotState, Schedule};
+use crate::{
+    Contract, ContractExt, Item, Kind, Lease, LeaseBudget, LeaseOffer, Lot, LotId, LotState,
+    Schedule, nft, sale,
+};
 
 /// Vested from the lease's start up to now, capped at its end.
 fn allowed(schedule: &Schedule, lease: &Lease, now_ms: u64) -> u128 {
@@ -21,23 +24,43 @@ impl Contract {
     }
 
     pub(crate) fn require_controller(lot: &Lot) {
-        require!(env::predecessor_account_id() == *Self::controller(lot), "not the lot controller");
+        require!(
+            env::predecessor_account_id() == *Self::controller(lot),
+            "not the lot controller"
+        );
     }
 
     pub(crate) fn holder(lot: &Lot, item: Item) -> &AccountId {
         match item {
             Item::Title => &lot.owner,
-            Item::Lease => &lot.lease.as_ref().unwrap_or_else(|| env::panic_str("lot is not leased")).holder,
+            Item::Lease => {
+                &lot.lease
+                    .as_ref()
+                    .unwrap_or_else(|| env::panic_str("lot is not leased"))
+                    .holder
+            }
         }
     }
 
     pub(crate) fn lease_budget_of(lot: &Lot) -> LeaseBudget {
-        let lease = lot.lease.as_ref().unwrap_or_else(|| env::panic_str("lot is not leased"));
-        LeaseBudget { allowed: U128(allowed(&lot.source.schedule, lease, env::block_timestamp_ms())), committed: lease.committed }
+        let lease = lot
+            .lease
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("lot is not leased"));
+        LeaseBudget {
+            allowed: U128(allowed(
+                &lot.source.schedule,
+                lease,
+                env::block_timestamp_ms(),
+            )),
+            committed: lease.committed,
+        }
     }
 
     pub(crate) fn lease_run_out(lot: &Lot) -> bool {
-        lot.lease.as_ref().is_some_and(|l| env::block_timestamp_ms() >= l.ends_at_ms)
+        lot.lease
+            .as_ref()
+            .is_some_and(|l| env::block_timestamp_ms() >= l.ends_at_ms)
     }
 
     /// Run out and Clean: the lease is over, whether or not a call has closed it yet.
@@ -64,7 +87,13 @@ impl Contract {
 
     pub(crate) fn close_lease(id: LotId, lot: &mut Lot) {
         let lease = lot.lease.take().expect("a lease to close");
-        NftBurn { owner_id: &lease.holder, token_ids: &[&nft::token_id(id, Item::Lease)], authorized_id: None, memo: None }.emit();
+        NftBurn {
+            owner_id: &lease.holder,
+            token_ids: &[&nft::token_id(id, Item::Lease)],
+            authorized_id: None,
+            memo: None,
+        }
+        .emit();
         lot.listing = None;
         lot.version += 1;
     }
@@ -83,11 +112,16 @@ impl Contract {
             .max()
             .unwrap_or(0);
         let schedule = &lot.source.schedule;
-        let Some(lease) = lot.lease.as_mut() else { return };
+        let Some(lease) = lot.lease.as_mut() else {
+            return;
+        };
         let now = env::block_timestamp_ms();
         require!(now < lease.ends_at_ms, "the lease has run out");
         let committed = lease.committed.0 + amount.saturating_sub(prior);
-        require!(committed <= allowed(schedule, lease, now), "over the lease budget");
+        require!(
+            committed <= allowed(schedule, lease, now),
+            "over the lease budget"
+        );
         lease.committed = U128(committed);
     }
 }
@@ -98,12 +132,22 @@ impl Contract {
     pub fn offer_lease(&mut self, id: LotId, price: U128, ends_at_ms: u64) {
         let lot = self.load_mut(id);
         require!(lot.lease.is_none(), "lot is already leased");
-        require!(env::predecessor_account_id() == lot.owner, "not the lot owner");
+        require!(
+            env::predecessor_account_id() == lot.owner,
+            "not the lot owner"
+        );
         require!(lot.state == LotState::Clean, "lot is not Clean");
         require!(price.0 > 0, "price must be positive");
-        require!(ends_at_ms > env::block_timestamp_ms(), "the lease must end in the future");
+        require!(
+            ends_at_ms > env::block_timestamp_ms(),
+            "the lease must end in the future"
+        );
         lot.listing = None;
-        lot.lease_offer = Some(LeaseOffer { price, ends_at_ms, version: lot.version });
+        lot.lease_offer = Some(LeaseOffer {
+            price,
+            ends_at_ms,
+            version: lot.version,
+        });
     }
 
     /// Pays the owner and the minter royalty in state, mints the lease token and hands the caller control.
@@ -112,11 +156,23 @@ impl Contract {
     #[payable]
     pub fn take_lease(&mut self, id: LotId, version: u32, ends_at_ms: u64) {
         let mut lot = self.load(id);
-        let offer = lot.lease_offer.clone().unwrap_or_else(|| env::panic_str("no lease offer"));
+        let offer = lot
+            .lease_offer
+            .clone()
+            .unwrap_or_else(|| env::panic_str("no lease offer"));
         require!(lot.state == LotState::Clean, "lot is not Clean");
-        require!(offer.version == lot.version && version == lot.version, "lease offer is stale");
-        require!(ends_at_ms == offer.ends_at_ms, "the lease offer ends at a different time");
-        require!(env::attached_deposit().as_yoctonear() == offer.price.0, "attach exactly the lease price");
+        require!(
+            offer.version == lot.version && version == lot.version,
+            "lease offer is stale"
+        );
+        require!(
+            ends_at_ms == offer.ends_at_ms,
+            "the lease offer ends at a different time"
+        );
+        require!(
+            env::attached_deposit().as_yoctonear() == offer.price.0,
+            "attach exactly the lease price"
+        );
         let now = env::block_timestamp_ms();
         require!(now < offer.ends_at_ms, "the lease offer has run out");
         let lessee = env::predecessor_account_id();
@@ -124,8 +180,18 @@ impl Contract {
 
         let (owner_share, royalty) = sale::split(offer.price.0, lot.royalty_bps);
         let (owner, minter) = (lot.owner.clone(), lot.minter.clone());
-        NftMint { owner_id: &lessee, token_ids: &[&nft::token_id(id, Item::Lease)], memo: None }.emit();
-        lot.lease = Some(Lease { holder: lessee, start_ms: now, ends_at_ms: offer.ends_at_ms, committed: U128(0) });
+        NftMint {
+            owner_id: &lessee,
+            token_ids: &[&nft::token_id(id, Item::Lease)],
+            memo: None,
+        }
+        .emit();
+        lot.lease = Some(Lease {
+            holder: lessee,
+            start_ms: now,
+            ends_at_ms: offer.ends_at_ms,
+            committed: U128(0),
+        });
         lot.lease_offer = None;
         lot.state = LotState::Active;
         lot.version += 1;
@@ -137,7 +203,10 @@ impl Contract {
     /// The lease holder hands control back early. Only while Clean, like expiry.
     pub fn surrender_lease(&mut self, id: LotId) {
         let lot = self.load_mut(id);
-        require!(env::predecessor_account_id() == *Self::holder(lot, Item::Lease), "not the lease holder");
+        require!(
+            env::predecessor_account_id() == *Self::holder(lot, Item::Lease),
+            "not the lease holder"
+        );
         require!(lot.state == LotState::Clean, "lot is not Clean");
         Self::close_lease(id, lot);
     }

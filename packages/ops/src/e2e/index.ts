@@ -6,17 +6,21 @@
  *   bun run e2e handover        one scenario (minting, handover, recovery, lease)
  */
 import { contract } from "./context.ts";
+import { logger } from "../logger.ts";
 import { scenarioNames, type ScenarioName } from "./names.ts";
 import { Run } from "./report.ts";
 import { scenarios } from "./scenarios.ts";
 
-const requested = Bun.argv.slice(2) as ScenarioName[];
-const unknown = requested.filter((n) => !scenarioNames.includes(n));
+const isScenario = (name: string): name is ScenarioName =>
+  scenarioNames.some((scenario) => scenario === name);
+const args = Bun.argv.slice(2);
+const unknown = args.filter((name) => !isScenario(name));
 if (unknown.length) {
-  console.error(`unknown scenario: ${unknown.join(", ")}. Known: ${scenarioNames.join(", ")}`);
+  logger.error({ unknown, known: scenarioNames }, "Unknown e2e scenario");
   process.exit(1);
 }
 
+const requested = args.filter(isScenario);
 let allPass = true;
 for (const name of requested.length ? requested : scenarioNames) {
   const run = await Run.start(name, contract);

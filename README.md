@@ -83,14 +83,16 @@ bun install
 bun run verify
 ```
 
-| Command | What it does |
-| --- | --- |
-| `bun run verify` | ABI check, type-check, unit tests, Sandbox tests, EVM build and tests |
-| `bun run e2e [minting\|handover\|recovery\|lease]` | Adversarial suite against testnet; reports in `reports/` |
-| `bun run keeper [--watch]` | Permissionless settling: gas, broadcast, prove, rescue, lease expiry |
-| `bun run deploy-lot <account> [Latest\|Safe]` | Deploy the lot contract |
-| `bun run build:release` | Reproducible build for the final deployment |
-| `bun run freeze` | Delete the contract's keys after a passing Safe run. Irreversible |
+| Command                                            | What it does                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------- |
+| `bun run verify`                                   | ABI check, type-check, unit tests, Sandbox tests, EVM build and tests |
+| `bun run e2e [minting\|handover\|recovery\|lease]` | Adversarial suite against testnet; reports in `reports/`              |
+| `bun run keeper [--watch]`                         | Permissionless settling: gas, broadcast, prove, rescue, lease expiry  |
+| `bun run deploy-lot <account> [Latest\|Safe]`      | Deploy the lot contract                                               |
+| `bun run build:release`                            | Reproducible build for the final deployment                           |
+| `bun run freeze`                                   | Delete the contract's keys after a passing Safe run. Irreversible     |
+
+Ops diagnostics use Pino on stderr, with readable terminal output and JSON when redirected. Set `LOG_LEVEL=warn` to reduce diagnostic output. Command results such as `lot-address` and the heist transcript stay on stdout.
 
 Ops scripts read the root `.env` (see `.env.example`). `AGENTS.md` lists the security invariants.
 

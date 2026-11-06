@@ -1,9 +1,8 @@
 use alloy_primitives::U256;
-use alloy_sol_types::{sol, SolCall};
-use std::mem::discriminant;
+use alloy_sol_types::{SolCall, sol};
 use near_sdk::env;
-use omni_transaction::evm::types::Signature;
 use omni_transaction::evm::EVMTransaction;
+use omni_transaction::evm::types::Signature;
 
 use crate::types::{Fees, Issued, Kind};
 
@@ -28,13 +27,19 @@ sol! {
 }
 
 pub fn transfer_calldata(to: &Address, amount: u128) -> Vec<u8> {
-    transferCall { to: *to, amount: U256::from(amount) }.abi_encode()
+    transferCall {
+        to: *to,
+        amount: U256::from(amount),
+    }
+    .abi_encode()
 }
 
 /// The exact EIP-1559 tx an issued entry stands for. `lot` is the burn's self-transfer target.
 pub fn build(issued: &Issued, lot: &Address, token: &Address) -> EVMTransaction {
     let (to, input) = match &issued.kind {
-        Kind::Transfer { to, amount } => (*token, transfer_calldata(&to.parse().unwrap(), amount.0)),
+        Kind::Transfer { to, amount } => {
+            (*token, transfer_calldata(&to.parse().unwrap(), amount.0))
+        }
         Kind::Burn => (*lot, vec![]),
     };
     EVMTransaction {
@@ -56,7 +61,12 @@ pub fn signing_hash(tx: &EVMTransaction) -> [u8; 32] {
 
 /// A replacement at `nonce` must raise both fees by at least 10% over everything already issued
 /// there: nodes reject a replacement that raises only one, and the old tx stays live.
-pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Result<(), &'static str> {
+pub fn check_fees(
+    prior: &[Issued],
+    nonce: u64,
+    fees: &Fees,
+    kind: &Kind,
+) -> Result<(), &'static str> {
     let (fee_cap, prio_cap) = match kind {
         Kind::Transfer { .. } => (TRANSFER_FEE_CAP, TRANSFER_PRIO_CAP),
         Kind::Burn => (BURN_FEE_CAP, BURN_PRIO_CAP),
@@ -72,7 +82,11 @@ pub fn check_fees(prior: &[Issued], nonce: u64, fees: &Fees, kind: &Kind) -> Res
     }
     let at_nonce = prior.iter().filter(|i| i.nonce == nonce);
     if matches!(kind, Kind::Transfer { .. })
-        && at_nonce.clone().filter(|i| matches!(i.kind, Kind::Transfer { .. })).count() >= MAX_TRANSFERS_PER_NONCE
+        && at_nonce
+            .clone()
+            .filter(|i| matches!(i.kind, Kind::Transfer { .. }))
+            .count()
+            >= MAX_TRANSFERS_PER_NONCE
     {
         return Err("too many transfers issued at this nonce");
     }
@@ -94,7 +108,13 @@ pub struct SignedTx {
 /// Accepts (r, s, v) only when it recovers to `lot` over `tx`. Without this, anyone could sign
 /// the same payload with their own key, mine it from their own address and fake a consumed nonce.
 /// `ecrecover`'s malleability flag rejects high s. NEAR accepts recovery ids up to 3, but yParity is 0 or 1.
-pub fn assemble(tx: &EVMTransaction, r: [u8; 32], s: [u8; 32], v: u8, lot: &Address) -> Option<SignedTx> {
+pub fn assemble(
+    tx: &EVMTransaction,
+    r: [u8; 32],
+    s: [u8; 32],
+    v: u8,
+    lot: &Address,
+) -> Option<SignedTx> {
     if v > 1 {
         return None;
     }
@@ -105,8 +125,17 @@ pub fn assemble(tx: &EVMTransaction, r: [u8; 32], s: [u8; 32], v: u8, lot: &Addr
     if &Address::from_raw_public_key(&pk) != lot {
         return None;
     }
-    let strip = |b: &[u8]| b.iter().skip_while(|x| **x == 0).copied().collect::<Vec<u8>>();
-    let raw = tx.build_with_signature(&Signature { v: v as u64, r: strip(&r), s: strip(&s) });
+    let strip = |b: &[u8]| {
+        b.iter()
+            .skip_while(|x| **x == 0)
+            .copied()
+            .collect::<Vec<u8>>()
+    };
+    let raw = tx.build_with_signature(&Signature {
+        v: v as u64,
+        r: strip(&r),
+        s: strip(&s),
+    });
     Some(SignedTx {
         hash: format!("0x{}", hex::encode(env::keccak256_array(&raw))),
         raw: format!("0x{}", hex::encode(raw)),
