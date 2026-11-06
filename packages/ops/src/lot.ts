@@ -1,9 +1,23 @@
 import type { Address, Hex } from "viem";
-import { fetchLotAddress, nextFees, type Fees, type LeaseOffer, type Lot, type LotCalls } from "@quitclaim/shared";
+import {
+  fetchLotAddress,
+  nextFees,
+  type Fees,
+  type LeaseOffer,
+  type Lot,
+  type LotCalls,
+} from "@quitclaim/shared";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
 import { nearToYocto } from "near-api-js";
-import { call, getFinality, getLot, view, YOCTO, type CallOutcome } from "./near.ts";
+import {
+  call,
+  getFinality,
+  getLot,
+  view,
+  YOCTO,
+  type CallOutcome,
+} from "./near.ts";
 import { env } from "./env.ts";
 
 /** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
@@ -37,23 +51,57 @@ export async function provision(opts: {
   gasFund?: bigint;
 }): Promise<Provisioned> {
   const token = env.token();
-  const address = await fetchLotAddress(opts.contract, `${opts.minter}/${opts.name}`);
-  const stream = await sablier.createStream(address, token, opts.total ?? 1_000n * 10n ** 18n, opts.durationSec ?? 3_600);
+  const address = await fetchLotAddress(
+    opts.contract,
+    `${opts.minter}/${opts.name}`,
+  );
+  const stream = await sablier.createStream(
+    address,
+    token,
+    opts.total ?? 1_000n * 10n ** 18n,
+    opts.durationSec ?? 3_600,
+  );
   const title = await sablier.titleSearch(stream.id, address, token);
-  if (!title.clean) throw new Error(`stream ${stream.id} fails title search: ${JSON.stringify(title)}`);
-  const fundTx = await base.fund(address, opts.gasFund ?? 2_000_000_000_000_000n);
+  if (!title.clean)
+    throw new Error(
+      `stream ${stream.id} fails title search: ${JSON.stringify(title)}`,
+    );
+  const fundTx = await base.fund(
+    address,
+    opts.gasFund ?? 2_000_000_000_000_000n,
+  );
   await base.waitFinality(stream.block, await getFinality(opts.contract));
-  const mint = await call(opts.minter, opts.contract, "mint_proven", {
-    name: opts.name,
-    owner_id: opts.owner,
-    royalty_bps: opts.royaltyBps ?? 250,
-    log: stream.log,
-  }, { deposit: MINT_DEPOSIT });
-  if (!mint.ok || !mint.value) throw new Error(`mint failed: ${mint.ok ? "rolled back (see contract logs)" : mint.error}`);
+  const mint = await call(
+    opts.minter,
+    opts.contract,
+    "mint_proven",
+    {
+      name: opts.name,
+      owner_id: opts.owner,
+      royalty_bps: opts.royaltyBps ?? 250,
+      log: stream.log,
+    },
+    { deposit: MINT_DEPOSIT },
+  );
+  if (!mint.ok || !mint.value)
+    throw new Error(
+      `mint failed: ${mint.ok ? "rolled back (see contract logs)" : mint.error}`,
+    );
   if (mint.value.address.toLowerCase() !== address.toLowerCase()) {
-    throw new Error(`contract derived ${mint.value.address}, expected ${address}`);
+    throw new Error(
+      `contract derived ${mint.value.address}, expected ${address}`,
+    );
   }
-  return { id: mint.value.id, address, token, streamId: stream.id, streamTx: stream.tx, fundTx, title, mint };
+  return {
+    id: mint.value.id,
+    address,
+    token,
+    streamId: stream.id,
+    streamTx: stream.tx,
+    fundTx,
+    title,
+    mint,
+  };
 }
 
 /** Moves whatever the lot's stream has vested into the lot. Anyone may do this. */
@@ -63,7 +111,10 @@ export async function pullSource(lot: Lot) {
 
 /** The lot's whole position in token units: still in the stream plus already held at the address. */
 export async function position(lot: Lot) {
-  const held = await base.tokenBalance(lot.token as Address, lot.address as Address);
+  const held = await base.tokenBalance(
+    lot.token as Address,
+    lot.address as Address,
+  );
   const locked = await sablier.remaining(BigInt(lot.source.id));
   return { held, locked, total: held + locked };
 }
@@ -88,42 +139,101 @@ export async function requestTransfer(
   override: { amount?: bigint; gasLimit?: number; fees?: Fees } = {},
 ) {
   const lot = await mustLot(contract, id);
-  const amount = override.amount ?? (await base.tokenBalance(lot.token as Address, lot.address as Address));
-  const gas = override.gasLimit ?? Number(await base.estimateTransferGas(lot.token as Address, lot.address as Address, to, amount));
-  return call(signer, contract, "request_transfer", {
-    id,
-    to,
-    amount: amount.toString(),
-    gas_limit: gas,
-    fees: override.fees ?? (await floor(lot, lot.next_nonce)),
-  }, { deposit: YOCTO });
+  const amount =
+    override.amount ??
+    (await base.tokenBalance(lot.token as Address, lot.address as Address));
+  const gas =
+    override.gasLimit ??
+    Number(
+      await base.estimateTransferGas(
+        lot.token as Address,
+        lot.address as Address,
+        to,
+        amount,
+      ),
+    );
+  return call(
+    signer,
+    contract,
+    "request_transfer",
+    {
+      id,
+      to,
+      amount: amount.toString(),
+      gas_limit: gas,
+      fees: override.fees ?? (await floor(lot, lot.next_nonce)),
+    },
+    { deposit: YOCTO },
+  );
 }
 
-export async function seal(contract: string, signer: string, id: number, fees?: Fees) {
+export async function seal(
+  contract: string,
+  signer: string,
+  id: number,
+  fees?: Fees,
+) {
   const lot = await mustLot(contract, id);
-  return call(signer, contract, "seal", { id, fees: fees ?? await floor(lot, lot.next_nonce) }, { deposit: YOCTO });
+  return call(
+    signer,
+    contract,
+    "seal",
+    { id, fees: fees ?? (await floor(lot, lot.next_nonce)) },
+    { deposit: YOCTO },
+  );
 }
 
-export async function rebump(contract: string, signer: string, id: number, nonce: number) {
+export async function rebump(
+  contract: string,
+  signer: string,
+  id: number,
+  nonce: number,
+) {
   const lot = await mustLot(contract, id);
-  return call(signer, contract, "rebump", { id, nonce, fees: await floor(lot, nonce) }, { deposit: YOCTO });
+  return call(
+    signer,
+    contract,
+    "rebump",
+    { id, nonce, fees: await floor(lot, nonce) },
+    { deposit: YOCTO },
+  );
 }
 
 export async function rescue(contract: string, signer: string, id: number) {
   const lot = await mustLot(contract, id);
-  return call(signer, contract, "rescue", { id, fees: await floor(lot, lot.next_nonce + 1) }, { deposit: YOCTO });
+  return call(
+    signer,
+    contract,
+    "rescue",
+    { id, fees: await floor(lot, lot.next_nonce + 1) },
+    { deposit: YOCTO },
+  );
 }
 
 /** The controller lists a Clean lot: the lease while one exists, else the title. */
-export async function list(contract: string, controller: string, id: number, priceYocto: bigint) {
-  return call(controller, contract, "list", { id, price: priceYocto.toString() });
+export async function list(
+  contract: string,
+  controller: string,
+  id: number,
+  priceYocto: bigint,
+) {
+  return call(controller, contract, "list", {
+    id,
+    price: priceYocto.toString(),
+  });
 }
 
 /** Buys whatever is listed (title or lease) at its price, bound to the lot version the buyer just read. */
 export async function buy(contract: string, buyer: string, id: number) {
   const lot = await mustLot(contract, id);
   if (!lot.listing) throw new Error(`lot ${id} is not listed`);
-  return call(buyer, contract, "buy", { id, version: lot.version }, { deposit: BigInt(lot.listing.price) });
+  return call(
+    buyer,
+    contract,
+    "buy",
+    { id, version: lot.version },
+    { deposit: BigInt(lot.listing.price) },
+  );
 }
 
 export async function withdraw(contract: string, account: string) {
@@ -131,18 +241,43 @@ export async function withdraw(contract: string, account: string) {
 }
 
 /** The title owner offers a Clean lot for lease until `endsAtMs`. */
-export async function offerLease(contract: string, owner: string, id: number, priceYocto: bigint, endsAtMs: number) {
-  return call(owner, contract, "offer_lease", { id, price: priceYocto.toString(), ends_at_ms: endsAtMs });
+export async function offerLease(
+  contract: string,
+  owner: string,
+  id: number,
+  priceYocto: bigint,
+  endsAtMs: number,
+) {
+  return call(owner, contract, "offer_lease", {
+    id,
+    price: priceYocto.toString(),
+    ends_at_ms: endsAtMs,
+  });
 }
 
 /** Takes a lease offer at its price, version and end time: `seen` if given, else the offer on the lot now. */
-export async function takeLease(contract: string, lessee: string, id: number, seen?: LeaseOffer) {
+export async function takeLease(
+  contract: string,
+  lessee: string,
+  id: number,
+  seen?: LeaseOffer,
+) {
   const offer = seen ?? (await mustLot(contract, id)).lease_offer;
   if (!offer) throw new Error(`lot ${id} has no lease offer`);
-  return call(lessee, contract, "take_lease", { id, version: offer.version, ends_at_ms: offer.ends_at_ms }, { deposit: BigInt(offer.price) });
+  return call(
+    lessee,
+    contract,
+    "take_lease",
+    { id, version: offer.version, ends_at_ms: offer.ends_at_ms },
+    { deposit: BigInt(offer.price) },
+  );
 }
 
-export async function surrenderLease(contract: string, holder: string, id: number) {
+export async function surrenderLease(
+  contract: string,
+  holder: string,
+  id: number,
+) {
   return call(holder, contract, "surrender_lease", { id });
 }
 
@@ -157,4 +292,5 @@ export async function leaseLeft(contract: string, id: number) {
 }
 
 /** By this machine's clock; the contract decides by NEAR block time. */
-export const leaseRunOut = (lot: Lot) => !!lot.lease && Date.now() >= lot.lease.ends_at_ms;
+export const leaseRunOut = (lot: Lot) =>
+  !!lot.lease && Date.now() >= lot.lease.ends_at_ms;

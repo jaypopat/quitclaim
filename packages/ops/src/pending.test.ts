@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { pendingLots } from "./pending.ts";
 
 test("discovers pending lots beyond the first page with bounded reads", async () => {
-  const tokens = Array.from({ length: 205 }, (_, i) => ({ token_id: String(i * 2) }));
+  const tokens = Array.from({ length: 205 }, (_, i) => ({
+    token_id: String(i * 2),
+  }));
   const reads: [string, number][] = [];
   let active = 0;
   let peak = 0;
@@ -20,19 +22,30 @@ test("discovers pending lots beyond the first page with bounded reads", async ()
     },
   );
   expect(ids).toEqual([2, 402]);
-  expect(reads).toEqual([["0", 100], ["100", 100], ["200", 100]]);
+  expect(reads).toEqual([
+    ["0", 100],
+    ["100", 100],
+    ["200", 100],
+  ]);
   expect(peak).toBeLessThanOrEqual(100);
 });
 
 test("an empty final page ends discovery without inspecting any lots", async () => {
-  const ids = await pendingLots(async () => [], async () => {
-    throw new Error("empty page must not trigger a lot query");
-  });
+  const ids = await pendingLots(
+    async () => [],
+    async () => {
+      throw new Error("empty page must not trigger a lot query");
+    },
+  );
   expect(ids).toEqual([]);
 });
 
 test("lease tokens are skipped but still count toward the page offset", async () => {
-  const tokens = [{ token_id: "0" }, { token_id: "0-lease" }, ...Array.from({ length: 100 }, (_, i) => ({ token_id: String(i + 1) }))];
+  const tokens = [
+    { token_id: "0" },
+    { token_id: "0-lease" },
+    ...Array.from({ length: 100 }, (_, i) => ({ token_id: String(i + 1) })),
+  ];
   const reads: string[] = [];
   const inspected: number[] = [];
   await pendingLots(
@@ -50,11 +63,15 @@ test("lease tokens are skipped but still count toward the page offset", async ()
 });
 
 test("settling a page that closes leases neither breaks nor skips the next page", async () => {
-  let tokens = Array.from({ length: 51 }, (_, i) => [{ token_id: String(i) }, { token_id: `${i}-lease` }]).flat();
+  let tokens = Array.from({ length: 51 }, (_, i) => [
+    { token_id: String(i) },
+    { token_id: `${i}-lease` },
+  ]).flat();
   const settled: number[] = [];
   for (const id of await pendingLots(
     async (offset, limit) => {
-      if (Number(offset) > tokens.length) throw new Error("Out of bounds, please use a smaller from_index.");
+      if (Number(offset) > tokens.length)
+        throw new Error("Out of bounds, please use a smaller from_index.");
       return tokens.slice(Number(offset), Number(offset) + limit);
     },
     async () => true,

@@ -19,13 +19,29 @@ export const carolEvm: Address = "0x000000000000000000000000000000000000ca01";
 export const lotOf = (id: number): Promise<Lot> => mustLot(contract, id);
 
 /** Anyone pulls the stream into the lot; then the owner signs a transfer of what the lot holds. */
-export async function withdrawTo(signer: string, id: number, to: Address, override: Parameters<typeof requestTransfer>[4] = {}) {
+export async function withdrawTo(
+  signer: string,
+  id: number,
+  to: Address,
+  override: Parameters<typeof requestTransfer>[4] = {},
+) {
   const pulled = await pullSource(await lotOf(id));
   const req = await requestTransfer(contract, signer, id, to, override);
-  return { pulled, req, links: [...(pulled ? [`pull ${base.txUrl(pulled)}`] : []), req.url] };
+  return {
+    pulled,
+    req,
+    links: [...(pulled ? [`pull ${base.txUrl(pulled)}`] : []), req.url],
+  };
 }
 
 export const transferTitle = (from: string, id: number, to = bob) =>
-  call(from, contract, "nft_transfer", { receiver_id: to, token_id: String(id) }, { deposit: YOCTO });
+  call(
+    from,
+    contract,
+    "nft_transfer",
+    { receiver_id: to, token_id: String(id) },
+    { deposit: YOCTO },
+  );
 
-export const raw = (outcome: { ok: boolean; value?: unknown }) => (outcome.ok ? ((outcome.value as Hex | null) ?? null) : null);
+export const raw = (outcome: { ok: boolean; value?: unknown }) =>
+  outcome.ok ? ((outcome.value as Hex | null) ?? null) : null;

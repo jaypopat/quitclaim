@@ -7,14 +7,19 @@ const PAGE_SIZE = 100;
  * title token, so only titles are inspected.
  */
 export async function pendingLots(
-  readPage: (fromIndex: string, limit: number) => Promise<{ token_id: string }[]>,
+  readPage: (
+    fromIndex: string,
+    limit: number,
+  ) => Promise<{ token_id: string }[]>,
   hasPending: (id: number) => Promise<boolean>,
 ) {
   const found: number[] = [];
   let offset = 0n;
   for (;;) {
     const tokens = await readPage(offset.toString(), PAGE_SIZE);
-    const ids = tokens.filter((token) => /^\d+$/.test(token.token_id)).map((token) => Number(token.token_id));
+    const ids = tokens
+      .filter((token) => /^\d+$/.test(token.token_id))
+      .map((token) => Number(token.token_id));
     const pending = await Promise.all(ids.map(hasPending));
     found.push(...ids.filter((_, index) => pending[index]));
     if (tokens.length < PAGE_SIZE) return found;
