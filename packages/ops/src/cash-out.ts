@@ -4,7 +4,8 @@
  * because a refund returns the tokens to the lot and would not restore a lessee's spent budget. The
  * lot signs one transfer of exactly the quoted `amountIn` to the deposit address. This script
  * broadcasts it, checks its Transfer log, hands its hash to 1Click, proves its nonce and waits for
- * the swap. `reports/cash-out-<time>.json` records the operation before signing and after each step.
+ * the swap. `reports/cash-out-<time>.json` records the operation before signing and after each step,
+ * and a run refuses to pay while an earlier record for the lot has an unfinished swap.
  *
  *   bun run cash-out <lot-id> <owner-account> [amount in USDC]
  */
@@ -18,6 +19,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { Glob } from "bun";
 import type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";
 import { config, nearView } from "@quitclaim/shared";
 import * as base from "./base.ts";
@@ -37,11 +39,31 @@ if (!idArg || !owner) {
 const contract = env.lotContract();
 const id = Number(idArg);
 const startedAt = new Date().toISOString();
-const file = new URL(
-  `../../../reports/cash-out-${startedAt.replaceAll(":", "-")}.json`,
-  import.meta.url,
-);
+const reportsDir = new URL("../../../reports/", import.meta.url).pathname;
+const file = `${reportsDir}cash-out-${startedAt.replaceAll(":", "-")}.json`;
 const SWAP_WAIT_MS = 10 * 60_000;
+
+type CashOut = {
+  startedAt: string;
+  contract: string;
+  lot: { id: number; version: number; address: Address };
+  pull: Hex | null;
+  recipient: string;
+  refundTo: Address;
+  amount: string;
+  depositAddress: Address;
+  deadline: string;
+  quote: Awaited<ReturnType<typeof intents.quote>>;
+  wnearBefore: string;
+  issued?: { seq: number; nonce: number; hash: Hex; request: string };
+  broadcast?: base.Broadcast["status"];
+  submitted?: { ok: boolean; error?: string };
+  deposit?: { status: string; transferLogged: boolean; url: string };
+  proof?: { seq: number; proven: boolean; url?: string; error?: string };
+  swap?: GetExecutionStatusResponse | null;
+  wnearAfter?: string;
+  error?: string;
+};
 
 const wnearOf = async (account: string) =>
   BigInt(
@@ -72,6 +94,26 @@ if (!isAddressEqual(lot.token as Address, config.evm.token))
   );
 const address = lot.address as Address;
 
+for (const name of new Glob("cash-out-*.json").scanSync(reportsDir)) {
+  const path = reportsDir + name;
+  const prior: CashOut = await Bun.file(path).json();
+  if (prior.contract !== contract || prior.lot.id !== id || !prior.issued)
+    continue;
+  if (prior.deposit?.status === "reverted") continue;
+  if (prior.swap && intents.terminal.has(prior.swap.status)) continue;
+  const now = await intents.statusWithin(prior.depositAddress, 15_000);
+  if (now && intents.terminal.has(now.status)) {
+    await Bun.write(
+      path,
+      `${JSON.stringify({ ...prior, swap: now }, null, 2)}\n`,
+    );
+    continue;
+  }
+  throw new Error(
+    `earlier cash-out ${name} is unresolved (${now?.status ?? "no status"}); let it finish, do not pay again`,
+  );
+}
+
 const pull = await pullSource(lot);
 const requested = amountArg
   ? parseUnits(amountArg, 6)
@@ -81,25 +123,7 @@ const wnearBefore = await wnearOf(owner);
 const quoted = await intents.quote(requested, address, owner);
 const amount = BigInt(quoted.quote.amountIn);
 
-const op: {
-  startedAt: string;
-  contract: string;
-  lot: { id: number; version: number; address: Address };
-  pull: Hex | null;
-  recipient: string;
-  refundTo: Address;
-  amount: string;
-  depositAddress: Address;
-  deadline: string;
-  quote: typeof quoted;
-  wnearBefore: string;
-  issued?: { seq: number; nonce: number; hash: Hex; request: string };
-  deposit?: { status: string; transferLogged: boolean; url: string };
-  proof?: { seq: number; proven: boolean; url?: string; error?: string };
-  swap?: GetExecutionStatusResponse;
-  wnearAfter?: string;
-  error?: string;
-} = {
+const op: CashOut = {
   startedAt,
   contract,
   lot: { id, version: lot.version, address },
@@ -114,7 +138,7 @@ const op: {
 };
 const record = () => Bun.write(file, `${JSON.stringify(op, null, 2)}\n`);
 await record();
-logger.info({ report: file.pathname }, "Cash-out recorded before signing");
+logger.info({ report: file }, "Cash-out recorded before signing");
 
 try {
   const req = await requestTransfer(contract, owner, id, op.depositAddress, {
@@ -135,7 +159,12 @@ try {
   await base.ensureBalance(address, await base.maxCost(raw));
   const sent = await base.broadcast(raw);
   if (!("hash" in sent)) throw new Error(`broadcast failed: ${sent.message}`);
-  await intents.submitDeposit(hash, op.depositAddress);
+  op.broadcast = sent.status;
+  op.submitted = await intents.submitDeposit(hash, op.depositAddress).then(
+    () => ({ ok: true }),
+    (e: Error) => ({ ok: false, error: e.message }),
+  );
+  await record();
   const receipt = await base.pub.waitForTransactionReceipt({ hash });
   const transferLogged = parseEventLogs({
     abi: erc20Abi,
@@ -182,23 +211,23 @@ try {
   await record();
 
   const delivered =
-    swap.status === intents.Status.SUCCESS && wnearAfter > wnearBefore;
-  const payout = swap.swapDetails.destinationChainTxHashes
+    swap?.status === intents.Status.SUCCESS && wnearAfter > wnearBefore;
+  const payout = (swap?.swapDetails.destinationChainTxHashes ?? [])
     .map((t) => t.explorerUrl)
     .join(" ");
   const swapLine =
-    swap.status === intents.Status.SUCCESS
+    swap?.status === intents.Status.SUCCESS
       ? `swap delivered: ${delivered ? "yes" : "no"}, SUCCESS, ${owner} holds ${wnear(wnearAfter)}, up from ${formatUnits(wnearBefore, 24)} ${payout}`
-      : swap.status === intents.Status.REFUNDED ||
-          swap.status === intents.Status.FAILED
+      : swap?.status === intents.Status.REFUNDED ||
+          swap?.status === intents.Status.FAILED
         ? `swap delivered: no, ${swap.status} ${swap.swapDetails.refundReason ?? ""}`
-        : `swap delivered: unresolved, still ${swap.status} after ${SWAP_WAIT_MS / 60_000} min; do not retry, check ${config.intents.apiBase}/v0/status?depositAddress=${op.depositAddress}`;
+        : `swap delivered: unresolved, still ${swap?.status ?? "no status"} after ${SWAP_WAIT_MS / 60_000} min; do not retry, check ${config.intents.apiBase}/v0/status?depositAddress=${op.depositAddress}`;
   console.log(
     [
       `deposit mined: yes, ${usdc(amount)} from lot ${id} to ${op.depositAddress} ${op.deposit.url}`,
       `nonce proven: ${op.proof.proven ? "yes" : "no"}, nonce ${pinned.nonce} (seq ${pinned.seq}) ${op.proof.url ?? `${op.proof.error}; bun run keeper proves it later`}`,
       swapLine,
-      `record: ${file.pathname}`,
+      `record: ${file}`,
     ].join("\n"),
   );
   process.exit(op.proof.proven && delivered ? 0 : 1);

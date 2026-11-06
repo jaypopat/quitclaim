@@ -55,19 +55,40 @@ export async function quote(
 export const submitDeposit = (txHash: Hex, depositAddress: Address) =>
   OneClickService.submitDepositTx({ txHash, depositAddress });
 
-const terminal = new Set([Status.SUCCESS, Status.REFUNDED, Status.FAILED]);
+export const terminal = new Set([
+  Status.SUCCESS,
+  Status.REFUNDED,
+  Status.FAILED,
+]);
 
-/** Polls the swap until SUCCESS, REFUNDED or FAILED, or until `timeoutMs` passes. Returns the last status. */
+/** One status request, cancelled after `ms`. Null when it times out or errors; the caller polls again. */
+export async function statusWithin(depositAddress: Address, ms: number) {
+  const req = OneClickService.getExecutionStatus(depositAddress);
+  const timer = setTimeout(() => req.cancel(), Math.max(ms, 1));
+  try {
+    return await req;
+  } catch (err) {
+    logger.warn({ err, depositAddress }, "Swap status request failed");
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Polls the swap until SUCCESS, REFUNDED or FAILED, or until `timeoutMs` passes, bounding each
+ * request by the time left. Returns the last status seen, or null if none arrived.
+ */
 export async function awaitSwap(depositAddress: Address, timeoutMs: number) {
   const until = Date.now() + timeoutMs;
-  let last = await OneClickService.getExecutionStatus(depositAddress);
-  logger.info({ depositAddress, status: last.status }, "Swap status");
-  while (!terminal.has(last.status) && Date.now() < until) {
-    await Bun.sleep(5_000);
-    const next = await OneClickService.getExecutionStatus(depositAddress);
-    if (next.status !== last.status)
+  let last: GetExecutionStatusResponse | null = null;
+  while (Date.now() < until) {
+    const next = await statusWithin(depositAddress, until - Date.now());
+    if (next && next.status !== last?.status)
       logger.info({ depositAddress, status: next.status }, "Swap status");
-    last = next;
+    last = next ?? last;
+    if (last && terminal.has(last.status)) break;
+    await Bun.sleep(Math.min(5_000, Math.max(until - Date.now(), 0)));
   }
   return last;
 }
