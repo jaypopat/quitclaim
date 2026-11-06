@@ -5,7 +5,11 @@
 import { compile, type JSONSchema } from "json-schema-to-typescript";
 
 const root = new URL("../../../", import.meta.url).pathname;
-const build = Bun.spawnSync(["cargo", "near", "abi"], { cwd: `${root}contracts/lot`, stdout: "pipe", stderr: "pipe" });
+const build = Bun.spawnSync(["cargo", "near", "abi"], {
+  cwd: `${root}contracts/lot`,
+  stdout: "pipe",
+  stderr: "pipe",
+});
 if (build.exitCode !== 0) {
   process.stderr.write(build.stderr);
   process.exit(build.exitCode ?? 1);
@@ -19,9 +23,13 @@ type AbiFunction = {
   params?: { args: AbiArg[] };
   result?: { type_schema: JSONSchema };
 };
-const abi = await Bun.file(`${root}target/near/quitclaim_lot/quitclaim_lot_abi.json`).json();
+const abi = await Bun.file(
+  `${root}target/near/quitclaim_lot/quitclaim_lot_abi.json`,
+).json();
 const functions: AbiFunction[] = abi.body.functions;
-const definitions: Record<string, JSONSchema> = { ...abi.body.root_schema.definitions };
+const definitions: Record<string, JSONSchema> = {
+  ...abi.body.root_schema.definitions,
+};
 /** near-sdk's schema says `array<u8>`, but it serializes `Base64VecU8` as a base64 string. */
 definitions.Base64VecU8 = { type: "string" };
 
@@ -36,16 +44,23 @@ const resolvesVia: Record<string, string> = {
   withdraw_proceeds: "on_withdraw",
 };
 
-const pascal = (s: string) => s.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
+const pascal = (s: string) =>
+  s.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
 const nullable = (s: JSONSchema): boolean =>
   s.type === "null" ||
   (Array.isArray(s.type) && s.type.includes("null")) ||
   (s.anyOf ?? s.oneOf ?? []).some((x) => nullable(x as JSONSchema));
-const resultOf = (f: AbiFunction): JSONSchema => f.result?.type_schema ?? { type: "null" };
+const resultOf = (f: AbiFunction): JSONSchema =>
+  f.result?.type_schema ?? { type: "null" };
 
 const methods: { name: string; kind: "view" | "call"; payable: boolean }[] = [];
 for (const f of functions) {
-  if (f.modifiers?.includes("private") || f.modifiers?.includes("init") || f.name === "contract_source_metadata") continue;
+  if (
+    f.modifiers?.includes("private") ||
+    f.modifiers?.includes("init") ||
+    f.name === "contract_source_metadata"
+  )
+    continue;
   const args = f.params?.args ?? [];
   definitions[`${pascal(f.name)}Args`] = {
     type: "object",
@@ -58,11 +73,19 @@ for (const f of functions) {
   if (!target) throw new Error(`${f.name} resolves via missing ${via}`);
   const result = resultOf(target);
   if (JSON.stringify(result).includes('"#/definitions/Promise"')) {
-    throw new Error(`${f.name} returns a Promise: add it to resolvesVia with the callback it resolves to`);
+    throw new Error(
+      `${f.name} returns a Promise: add it to resolvesVia with the callback it resolves to`,
+    );
   }
   definitions[`${pascal(f.name)}Result`] =
-    f.name === "seal" ? { anyOf: [result, { $ref: "#/definitions/LotState" }] } : result;
-  methods.push({ name: f.name, kind: f.kind, payable: !!f.modifiers?.includes("payable") });
+    f.name === "seal"
+      ? { anyOf: [result, { $ref: "#/definitions/LotState" }] }
+      : result;
+  methods.push({
+    name: f.name,
+    kind: f.kind,
+    payable: !!f.modifiers?.includes("payable"),
+  });
 }
 
 const types = await compile({ definitions } as JSONSchema, "LotAbi", {
@@ -74,12 +97,21 @@ const types = await compile({ definitions } as JSONSchema, "LotAbi", {
 });
 
 /** Names the tool merged into an identical schema or resolved straight to a `$ref` still need to exist. */
-const emitted = (name: string) => new RegExp(`^export (type|interface) ${name}\\b`, "m").test(types);
+const emitted = (name: string) =>
+  new RegExp(`^export (type|interface) ${name}\\b`, "m").test(types);
 const aliases = Object.entries(definitions)
   .filter(([name]) => /(Args|Result)$/.test(name) && !emitted(name))
   .map(([name, schema]) => {
-    const ref = typeof schema.$ref === "string" ? schema.$ref.replace("#/definitions/", "") : null;
-    const twin = Object.entries(definitions).find(([other, s]) => other !== name && emitted(other) && JSON.stringify(s) === JSON.stringify(schema));
+    const ref =
+      typeof schema.$ref === "string"
+        ? schema.$ref.replace("#/definitions/", "")
+        : null;
+    const twin = Object.entries(definitions).find(
+      ([other, s]) =>
+        other !== name &&
+        emitted(other) &&
+        JSON.stringify(s) === JSON.stringify(schema),
+    );
     const target = ref ?? twin?.[0];
     if (!target) throw new Error(`no emitted type for ${name}`);
     return `export type ${name} = ${target};`;
@@ -88,14 +120,20 @@ const aliases = Object.entries(definitions)
 const map = (kind: "view" | "call") =>
   `export interface Lot${kind === "view" ? "Views" : "Calls"} {\n${methods
     .filter((m) => m.kind === kind)
-    .map((m) => `  ${m.name}: { args: ${pascal(m.name)}Args; result: ${pascal(m.name)}Result; payable: ${m.payable} };`)
+    .map(
+      (m) =>
+        `  ${m.name}: { args: ${pascal(m.name)}Args; result: ${pascal(m.name)}Result; payable: ${m.payable} };`,
+    )
     .join("\n")}\n}\n`;
 
 const out = [
   "// Generated by `bun run abi` from contracts/lot. Do not edit.",
   types
     .replace(/^export interface LotAbi \{[^}]*\}\n?/m, "")
-    .replace(/\/\*\*(?:(?!\*\/)[\s\S])*?(?:referenced by `LotAbi`|NEAR Account Identifier)[\s\S]*?\*\/\n\s*/g, "")
+    .replace(
+      /\/\*\*(?:(?!\*\/)[\s\S])*?(?:referenced by `LotAbi`|NEAR Account Identifier)[\s\S]*?\*\/\n\s*/g,
+      "",
+    )
     .trim(),
   "",
   ...aliases,

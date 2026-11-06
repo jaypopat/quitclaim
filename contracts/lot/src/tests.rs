@@ -6,9 +6,9 @@
 
 use near_sdk::json_types::U128;
 use near_sdk::mock::MockAction;
+use near_sdk::serde_json::{self, Value, json};
 use near_sdk::test_utils::VMContextBuilder;
-use near_sdk::serde_json::{self, json, Value};
-use near_sdk::{testing_env, AccountId, NearToken, PromiseError};
+use near_sdk::{AccountId, NearToken, PromiseError, testing_env};
 
 use crate::*;
 use alloy_sol_types::SolEvent;
@@ -39,7 +39,10 @@ fn bob() -> AccountId {
     acc("bob.testnet")
 }
 fn fees(max_fee: u128, max_prio: u128) -> Fees {
-    Fees { max_fee: U128(max_fee), max_prio: U128(max_prio) }
+    Fees {
+        max_fee: U128(max_fee),
+        max_prio: U128(max_prio),
+    }
 }
 fn claim_fees() -> Fees {
     fees(50_000_000, 1_000_000)
@@ -92,7 +95,11 @@ fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> Creati
     let word = |hex40: &str| format!("{:0>64}", hex40.trim_start_matches("0x"));
     let num = |n: u128| format!("{n:064x}");
     let data = [
-        num(0xa0), num(0), num(1), num(0), num(0),
+        num(0xa0),
+        num(0),
+        num(1),
+        num(0),
+        num(0),
         word("0x8af686edd999e3ab397cfe47e9e5b5d0dbc89e4d"),
         word("0x8af686edd999e3ab397cfe47e9e5b5d0dbc89e4d"),
         word(recipient),
@@ -100,7 +107,10 @@ fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> Creati
         word(TOKEN),
         num(cancelable as u128),
         num(transferable as u128),
-        num(STREAM_START as u128), num(STREAM_END as u128), num(0x140), num(6),
+        num(STREAM_START as u128),
+        num(STREAM_END as u128),
+        num(0x140),
+        num(6),
         format!("{:0<64}", hex::encode("linear")),
     ]
     .concat();
@@ -113,17 +123,34 @@ fn creation_log(recipient: &str, cancelable: bool, transferable: bool) -> Creati
         block_number: 1,
         address: LOCKUP.trim_start_matches("0x").to_lowercase(),
         data: format!("0x{data}"),
-        topics: vec![hex::encode(source::CreateLockupLinearStream::SIGNATURE_HASH), num(7)],
+        topics: vec![
+            hex::encode(source::CreateLockupLinearStream::SIGNATURE_HASH),
+            num(7),
+        ],
     }
 }
 
 /// Runs the whole `mint_proven` chain with the given derived key and MPC verdict.
 #[allow(clippy::too_many_arguments)]
-fn mint(c: &mut Contract, minter: AccountId, name: &str, owner: AccountId, royalty_bps: u16, key: &str, log: CreationLog, verdict: Result<Value, PromiseError>) -> Option<MintedLot> {
+fn mint(
+    c: &mut Contract,
+    minter: AccountId,
+    name: &str,
+    owner: AccountId,
+    royalty_bps: u16,
+    key: &str,
+    log: CreationLog,
+    verdict: Result<Value, PromiseError>,
+) -> Option<MintedLot> {
     call(minter, ONE_NEAR);
     let _ = c.mint_proven(name.into(), owner, royalty_bps, log.clone());
     let id = c.next_id - 1;
-    let recipient = format!("{:#x}", source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap()).unwrap().recipient);
+    let recipient = format!(
+        "{:#x}",
+        source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap())
+            .unwrap()
+            .recipient
+    );
     as_contract();
     if let PromiseOrValue::Value(v) = c.on_derived(id, recipient, log, STORAGE, Ok(key.into())) {
         return v;
@@ -134,8 +161,23 @@ fn mint(c: &mut Contract, minter: AccountId, name: &str, owner: AccountId, royal
 
 fn minted_lot(key: &str, address: &str) -> Contract {
     let mut c = new_contract(Finality::Safe);
-    let minted = mint(&mut c, admin(), "lot-a", alice(), 250, key, creation_log(address, false, false), attested());
-    assert_eq!(minted, Some(MintedLot { id: 0, address: address.into() }));
+    let minted = mint(
+        &mut c,
+        admin(),
+        "lot-a",
+        alice(),
+        250,
+        key,
+        creation_log(address, false, false),
+        attested(),
+    );
+    assert_eq!(
+        minted,
+        Some(MintedLot {
+            id: 0,
+            address: address.into()
+        })
+    );
     c
 }
 
@@ -150,17 +192,28 @@ fn held_key() -> secp256k1::SecretKey {
 
 /// An Active lot whose derived key is the held key.
 fn held_lot() -> Contract {
-    let pk = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &held_key()).serialize_uncompressed();
-    let key = near_sdk::PublicKey::from_parts(near_sdk::CurveType::SECP256K1, pk[1..].to_vec()).unwrap();
-    minted_lot(&String::from(&key), &format!("{:#x}", evm::Address::from_raw_public_key(&pk[1..])))
+    let pk = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &held_key())
+        .serialize_uncompressed();
+    let key =
+        near_sdk::PublicKey::from_parts(near_sdk::CurveType::SECP256K1, pk[1..].to_vec()).unwrap();
+    minted_lot(
+        &String::from(&key),
+        &format!("{:#x}", evm::Address::from_raw_public_key(&pk[1..])),
+    )
 }
 
 /// The args of the `method` call that the last contract call scheduled.
 fn scheduled(method: &str) -> Value {
-    near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).find_map(|a| match a {
-        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == method.as_bytes() => serde_json::from_slice(&args).ok(),
-        _ => None,
-    }).unwrap_or_else(|| panic!("no {method} call scheduled"))
+    near_sdk::test_utils::get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .find_map(|a| match a {
+            MockAction::FunctionCallWeight {
+                method_name, args, ..
+            } if method_name == method.as_bytes() => serde_json::from_slice(&args).ok(),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no {method} call scheduled"))
 }
 
 /// The issued seq the last call asked MPC to sign.
@@ -179,9 +232,16 @@ fn sign_fails(c: &mut Contract) {
 /// Returns the seq it signed.
 fn held_signs(c: &mut Contract) -> u32 {
     let seq = signing_seq();
-    let payload = hex::decode(scheduled("sign")["request"]["payload_v2"]["Ecdsa"].as_str().unwrap()).unwrap();
+    let payload = hex::decode(
+        scheduled("sign")["request"]["payload_v2"]["Ecdsa"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
     let message = secp256k1::Message::from_slice(&payload).unwrap();
-    let (v, rs) = secp256k1::Secp256k1::new().sign_ecdsa_recoverable(&message, &held_key()).serialize_compact();
+    let (v, rs) = secp256k1::Secp256k1::new()
+        .sign_ecdsa_recoverable(&message, &held_key())
+        .serialize_compact();
     let v = v.to_i32() as u8;
     let response = json!({
         "scheme": "Secp256k1",
@@ -190,7 +250,10 @@ fn held_signs(c: &mut Contract) -> u32 {
         "recovery_id": v,
     });
     as_contract();
-    assert!(c.on_signed(0, seq, Ok(response)).is_some(), "the signature is recorded");
+    assert!(
+        c.on_signed(0, seq, Ok(response)).is_some(),
+        "the signature is recorded"
+    );
     seq
 }
 
@@ -206,7 +269,14 @@ fn signed_transfer0() -> Contract {
 fn prove_ok(c: &mut Contract, seq: u32) -> bool {
     call(bob(), 1);
     let _ = c.prove(0, seq);
-    let nonce = c.get_lot(0).unwrap().issued.iter().find(|i| i.seq == seq).unwrap().nonce;
+    let nonce = c
+        .get_lot(0)
+        .unwrap()
+        .issued
+        .iter()
+        .find(|i| i.seq == seq)
+        .unwrap()
+        .nonce;
     as_contract();
     c.on_proved(0, nonce, attested())
 }
@@ -227,24 +297,76 @@ fn failed_derivation_rolls_the_mint_back() {
     let log = creation_log(LOT_ADDR, false, false);
     let _ = c.mint_proven("lot-a".into(), alice(), 250, log.clone());
     as_contract();
-    assert!(matches!(c.on_derived(0, LOT_ADDR.into(), log, STORAGE, Err(PromiseError::Failed)), PromiseOrValue::Value(None)));
+    assert!(matches!(
+        c.on_derived(0, LOT_ADDR.into(), log, STORAGE, Err(PromiseError::Failed)),
+        PromiseOrValue::Value(None)
+    ));
     assert!(c.get_lot(0).is_none());
-    assert!(mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested()).is_some(), "the path is free again");
+    assert!(
+        mint(
+            &mut c,
+            admin(),
+            "lot-a",
+            alice(),
+            250,
+            LOT_KEY,
+            creation_log(LOT_ADDR, false, false),
+            attested()
+        )
+        .is_some(),
+        "the path is free again"
+    );
 }
 
 #[test]
 fn a_failed_mpc_verification_rolls_the_mint_back() {
     let mut c = new_contract(Finality::Safe);
-    assert_eq!(mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), Err(PromiseError::Failed)), None);
+    assert_eq!(
+        mint(
+            &mut c,
+            admin(),
+            "lot-a",
+            alice(),
+            250,
+            LOT_KEY,
+            creation_log(LOT_ADDR, false, false),
+            Err(PromiseError::Failed)
+        ),
+        None
+    );
     assert!(c.get_lot(0).is_none());
-    assert!(mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested()).is_some());
+    assert!(
+        mint(
+            &mut c,
+            admin(),
+            "lot-a",
+            alice(),
+            250,
+            LOT_KEY,
+            creation_log(LOT_ADDR, false, false),
+            attested()
+        )
+        .is_some()
+    );
 }
 
 #[test]
 fn a_stream_paying_another_address_is_refused() {
     let mut c = new_contract(Finality::Safe);
     let other = "0x0650899c81daacc773353a0fcd74c80b38f0fa07";
-    assert_eq!(mint(&mut c, admin(), "lot-a", alice(), 250, LOT_KEY, creation_log(other, false, false), attested()), None);
+    assert_eq!(
+        mint(
+            &mut c,
+            admin(),
+            "lot-a",
+            alice(),
+            250,
+            LOT_KEY,
+            creation_log(other, false, false),
+            attested()
+        ),
+        None
+    );
     assert!(c.get_lot(0).is_none());
 }
 
@@ -253,7 +375,12 @@ fn a_stream_paying_another_address_is_refused() {
 fn a_cancelable_stream_is_refused() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
-    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, true, false));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        alice(),
+        250,
+        creation_log(LOT_ADDR, true, false),
+    );
 }
 
 #[test]
@@ -261,7 +388,12 @@ fn a_cancelable_stream_is_refused() {
 fn a_transferable_stream_is_refused() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
-    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, true));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        alice(),
+        250,
+        creation_log(LOT_ADDR, false, true),
+    );
 }
 
 #[test]
@@ -289,16 +421,29 @@ fn another_event_is_refused() {
 fn paths_are_unique() {
     let mut c = active_lot();
     call(admin(), 1);
-    let _ = c.mint_proven("lot-a".into(), bob(), 250, creation_log(LOT_ADDR, false, false));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        bob(),
+        250,
+        creation_log(LOT_ADDR, false, false),
+    );
 }
 
 #[test]
 fn paths_are_namespaced_by_minter() {
     let mut c = active_lot();
     call(bob(), ONE_NEAR);
-    let _ = c.mint_proven("lot-a".into(), bob(), 250, creation_log(LOT_ADDR, false, false));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        bob(),
+        250,
+        creation_log(LOT_ADDR, false, false),
+    );
     let (a, b) = (c.get_lot(0).unwrap(), c.get_lot(1).unwrap());
-    assert_eq!((a.path.as_str(), b.path.as_str()), ("admin.testnet/lot-a", "bob.testnet/lot-a"));
+    assert_eq!(
+        (a.path.as_str(), b.path.as_str()),
+        ("admin.testnet/lot-a", "bob.testnet/lot-a")
+    );
     assert_eq!((a.minter, b.minter), (admin(), bob()));
 }
 
@@ -307,9 +452,15 @@ fn hashes_the_creation_log_exactly_as_mpc_attested() {
     let log: CreationLog = serde_json::from_str(REAL_CREATION_LOG).unwrap();
     let evm_log = log.to_evm_log().unwrap();
     let request = source::verify_request(&evm_log, Finality::Latest).unwrap();
-    assert_eq!(hex::encode(request.expected_payload_hash.unwrap().0), "512781a3776f692f4b6123a4d48b7bb2207128df9e50c249ec6d88abe5db092f");
+    assert_eq!(
+        hex::encode(request.expected_payload_hash.unwrap().0),
+        "512781a3776f692f4b6123a4d48b7bb2207128df9e50c249ec6d88abe5db092f"
+    );
     let stream = source::decode(&evm_log, &LOCKUP.parse().unwrap()).unwrap();
-    assert_eq!((stream.id, format!("{:#x}", stream.recipient)), (112, "0x0650899c81daacc773353a0fcd74c80b38f0fa07".into()));
+    assert_eq!(
+        (stream.id, format!("{:#x}", stream.recipient)),
+        (112, "0x0650899c81daacc773353a0fcd74c80b38f0fa07".into())
+    );
     assert_eq!(stream.schedule.deposit.0, 1_000 * 10u128.pow(18));
 }
 
@@ -318,7 +469,10 @@ fn reproduces_the_exact_tx_base_accepted() {
     let c = signed_transfer0();
     let issued = &c.get_lot(0).unwrap().issued[0];
     assert_eq!(issued.raw_tx.as_deref(), Some(CLAIM0_RAW));
-    assert_eq!(issued.tx_hash.as_deref(), Some("0xfdebf0c7ec8838b09f3a379688b32c7948564e677dbf5e6a4a67e41258451060"));
+    assert_eq!(
+        issued.tx_hash.as_deref(),
+        Some("0xfdebf0c7ec8838b09f3a379688b32c7948564e677dbf5e6a4a67e41258451060")
+    );
 }
 
 #[test]
@@ -332,7 +486,11 @@ fn issued_is_recorded_before_the_signature_arrives() {
     as_contract();
     assert_eq!(c.on_signed(0, 0, Err(PromiseError::Failed)), None);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!(lot.issued.len(), 1, "a failed callback never un-issues a tx");
+    assert_eq!(
+        lot.issued.len(),
+        1,
+        "a failed callback never un-issues a tx"
+    );
     assert!(!lot.sign_in_flight);
 }
 
@@ -358,7 +516,13 @@ fn one_sign_request_at_a_time() {
     let mut c = active_lot();
     call(alice(), 1);
     let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
-    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, fees(60_000_000, 2_000_000));
+    let _ = c.request_transfer(
+        0,
+        ALICE_EVM.into(),
+        U128(AMOUNT),
+        150_000,
+        fees(60_000_000, 2_000_000),
+    );
 }
 
 #[test]
@@ -366,7 +530,13 @@ fn one_sign_request_at_a_time() {
 fn replacement_must_raise_the_priority_fee_too() {
     let mut c = signed_transfer0();
     call(alice(), 1);
-    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, fees(100_000_000, 1_000_000));
+    let _ = c.request_transfer(
+        0,
+        ALICE_EVM.into(),
+        U128(AMOUNT),
+        150_000,
+        fees(100_000_000, 1_000_000),
+    );
 }
 
 #[test]
@@ -374,7 +544,13 @@ fn replacement_must_raise_the_priority_fee_too() {
 fn fees_are_capped() {
     let mut c = active_lot();
     call(alice(), 1);
-    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, fees(evm::TRANSFER_FEE_CAP + 1, 1));
+    let _ = c.request_transfer(
+        0,
+        ALICE_EVM.into(),
+        U128(AMOUNT),
+        150_000,
+        fees(evm::TRANSFER_FEE_CAP + 1, 1),
+    );
 }
 
 #[test]
@@ -412,7 +588,10 @@ fn proving_a_claim_advances_the_nonce_and_stays_active() {
     let mut c = signed_transfer0();
     assert!(prove_ok(&mut c, 0));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.state, lot.next_nonce, lot.issued.len()), (LotState::Active, 1, 0));
+    assert_eq!(
+        (lot.state, lot.next_nonce, lot.issued.len()),
+        (LotState::Active, 1, 0)
+    );
 }
 
 #[test]
@@ -440,7 +619,13 @@ fn cannot_prove_without_a_recorded_signature() {
 fn late_signature_for_a_cleared_entry_is_a_no_op() {
     let mut c = signed_transfer0();
     call(alice(), 1);
-    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, fees(55_000_000, 1_100_000));
+    let _ = c.request_transfer(
+        0,
+        ALICE_EVM.into(),
+        U128(AMOUNT),
+        150_000,
+        fees(55_000_000, 1_100_000),
+    );
     call(bob(), 1);
     let _ = c.prove(0, 0);
     as_contract();
@@ -448,7 +633,10 @@ fn late_signature_for_a_cleared_entry_is_a_no_op() {
     as_contract();
     assert_eq!(c.on_signed(0, 1, mpc_sig()), None);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.next_nonce, lot.issued.len(), lot.sign_in_flight), (1, 0, false));
+    assert_eq!(
+        (lot.next_nonce, lot.issued.len(), lot.sign_in_flight),
+        (1, 0, false)
+    );
 }
 
 #[test]
@@ -478,14 +666,23 @@ fn full_handover_alice_to_bob() {
     as_contract();
     let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
     call(bob(), 0);
-    assert!(prove_ok(&mut c, 0), "the retained claim mined first; that consumes the nonce too");
+    assert!(
+        prove_ok(&mut c, 0),
+        "the retained claim mined first; that consumes the nonce too"
+    );
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.state, lot.version, lot.next_nonce), (LotState::Clean, 1, 1));
+    assert_eq!(
+        (lot.state, lot.version, lot.next_nonce),
+        (LotState::Clean, 1, 1)
+    );
 
     call(alice(), 1);
     c.nft_transfer(bob(), "0".into(), None, None);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.owner, lot.state, lot.version), (bob(), LotState::Active, 2));
+    assert_eq!(
+        (lot.owner, lot.state, lot.version),
+        (bob(), LotState::Active, 2)
+    );
 }
 
 #[test]
@@ -506,7 +703,13 @@ fn no_claims_while_sealing() {
     as_contract();
     let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
     call(alice(), 1);
-    let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, fees(70_000_000, 2_000_000));
+    let _ = c.request_transfer(
+        0,
+        ALICE_EVM.into(),
+        U128(AMOUNT),
+        150_000,
+        fees(70_000_000, 2_000_000),
+    );
 }
 
 #[test]
@@ -542,7 +745,14 @@ fn anyone_can_replace_a_signed_burn_with_higher_fees() {
     let lot = c.get_lot(0).unwrap();
     assert_eq!(lot.issued.len(), 3);
     assert!(lot.issued.iter().all(|i| i.nonce == 0));
-    assert_eq!((signing_seq(), lot.issued[2].kind.clone(), lot.issued[2].fees), (2, Kind::Burn, fees(61_000_000, 1_210_000)));
+    assert_eq!(
+        (
+            signing_seq(),
+            lot.issued[2].kind.clone(),
+            lot.issued[2].fees
+        ),
+        (2, Kind::Burn, fees(61_000_000, 1_210_000))
+    );
 }
 
 #[test]
@@ -563,7 +773,10 @@ fn rescue_burn_at_next_nonce_proves_the_stuck_one() {
     as_contract();
     assert!(c.on_proved(0, 1, attested()));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.state, lot.next_nonce, lot.issued.len()), (LotState::Clean, 2, 0));
+    assert_eq!(
+        (lot.state, lot.next_nonce, lot.issued.len()),
+        (LotState::Clean, 2, 0)
+    );
 }
 
 #[test]
@@ -646,10 +859,19 @@ fn failed_transfers_never_use_up_the_seal_or_the_rescue() {
     call(bob(), 1);
     let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
     let lot = c.get_lot(0).unwrap();
-    let count = |nonce: u64, burn: bool| lot.issued.iter().filter(|i| i.nonce == nonce && (i.kind == Kind::Burn) == burn).count();
+    let count = |nonce: u64, burn: bool| {
+        lot.issued
+            .iter()
+            .filter(|i| i.nonce == nonce && (i.kind == Kind::Burn) == burn)
+            .count()
+    };
     let max = evm::MAX_TRANSFERS_PER_NONCE;
     assert_eq!(lot.state, LotState::Sealing);
-    assert_eq!((count(0, false), count(0, true), count(1, true)), (max, max, 1), "every issued entry is kept until proof");
+    assert_eq!(
+        (count(0, false), count(0, true), count(1, true)),
+        (max, max, 1),
+        "every issued entry is kept until proof"
+    );
 }
 
 #[test]
@@ -680,7 +902,12 @@ fn signed_burns_below_the_base_fee_cannot_strand_an_expired_lease() {
     let lot = c.get_lot(0).unwrap();
     let burns: Vec<_> = lot.issued.iter().filter(|i| i.kind == Kind::Burn).collect();
     assert_eq!(burns.len(), evm::MAX_TRANSFERS_PER_NONCE);
-    assert!(burns.iter().all(|i| i.tx_hash.is_some() && i.fees.max_fee.0 < 5_000_000), "every burn is signed and below the base fee");
+    assert!(
+        burns
+            .iter()
+            .all(|i| i.tx_hash.is_some() && i.fees.max_fee.0 < 5_000_000),
+        "every burn is signed and below the base fee"
+    );
     clock(ENDS);
     call(carol(), 1);
     let _ = c.seal(0, fees(50_000_000, 10_000_000));
@@ -689,7 +916,10 @@ fn signed_burns_below_the_base_fee_cannot_strand_an_expired_lease() {
     assert!(burned_lease_token());
     let lot = c.get_lot(0).unwrap();
     assert_eq!(*Contract::controller(&lot), alice());
-    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+    assert_eq!(
+        (lot.state, lot.lease, lot.next_nonce),
+        (LotState::Clean, None, 1)
+    );
 }
 
 /// The fee floor, the 10% bump and the hard caps bound burns at one nonce without a count limit.
@@ -698,11 +928,29 @@ fn burns_per_nonce_are_bounded_by_the_fee_caps() {
     let mut f = fees(evm::MIN_FEE, evm::MIN_FEE);
     let mut prior = Vec::new();
     while evm::check_fees(&prior, 0, &f, &Kind::Burn).is_ok() {
-        prior.push(Issued { seq: prior.len() as u32, nonce: 0, kind: Kind::Burn, gas_limit: evm::BURN_GAS_LIMIT, fees: f, tx_hash: None, raw_tx: None });
-        f = fees((f.max_fee.0 * 11).div_ceil(10), (f.max_prio.0 * 11).div_ceil(10));
+        prior.push(Issued {
+            seq: prior.len() as u32,
+            nonce: 0,
+            kind: Kind::Burn,
+            gas_limit: evm::BURN_GAS_LIMIT,
+            fees: f,
+            tx_hash: None,
+            raw_tx: None,
+        });
+        f = fees(
+            (f.max_fee.0 * 11).div_ceil(10),
+            (f.max_prio.0 * 11).div_ceil(10),
+        );
     }
-    assert_eq!(evm::check_fees(&prior, 0, &f, &Kind::Burn), Err("fee above cap"));
-    assert!((50..=100).contains(&prior.len()), "{} burns fit under the caps", prior.len());
+    assert_eq!(
+        evm::check_fees(&prior, 0, &f, &Kind::Burn),
+        Err("fee above cap")
+    );
+    assert!(
+        (50..=100).contains(&prior.len()),
+        "{} burns fit under the caps",
+        prior.len()
+    );
 }
 
 #[test]
@@ -720,7 +968,13 @@ fn burn_at_the_stuck_nonce_stays_repriceable_after_a_rescue() {
     call(bob(), 1);
     let _ = c.rebump(0, 0, fees(61_000_000, 1_210_000));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!(lot.issued.iter().filter(|i| i.nonce == 0 && i.kind == Kind::Burn).count(), 2);
+    assert_eq!(
+        lot.issued
+            .iter()
+            .filter(|i| i.nonce == 0 && i.kind == Kind::Burn)
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -738,11 +992,20 @@ fn a_proof_in_flight_does_not_block_another() {
     let _ = c.prove(0, 0);
     let _ = c.prove(0, 0);
     as_contract();
-    assert!(!c.on_proved(0, 0, Err(PromiseError::Failed)), "the griefer's proof times out");
+    assert!(
+        !c.on_proved(0, 0, Err(PromiseError::Failed)),
+        "the griefer's proof times out"
+    );
     as_contract();
-    assert!(c.on_proved(0, 0, attested()), "the honest proof still lands");
+    assert!(
+        c.on_proved(0, 0, attested()),
+        "the honest proof still lands"
+    );
     as_contract();
-    assert!(!c.on_proved(0, 0, attested()), "a duplicate success is stale");
+    assert!(
+        !c.on_proved(0, 0, attested()),
+        "a duplicate success is stale"
+    );
 }
 
 const PRICE: u128 = 1_000_000;
@@ -776,8 +1039,15 @@ fn buy_moves_the_title_and_credits_seller_and_minter() {
     call(bob(), PRICE);
     c.buy(0, 1);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.owner, lot.state, lot.version, lot.listing), (bob(), LotState::Active, 2, None));
-    assert_eq!(c.proceeds_of(alice()).0, 975_000, "seller gets the price minus 2.5%");
+    assert_eq!(
+        (lot.owner, lot.state, lot.version, lot.listing),
+        (bob(), LotState::Active, 2, None)
+    );
+    assert_eq!(
+        c.proceeds_of(alice()).0,
+        975_000,
+        "seller gets the price minus 2.5%"
+    );
     assert_eq!(c.proceeds_of(admin()).0, 25_000, "minter gets 2.5%");
 }
 
@@ -830,7 +1100,12 @@ fn a_sold_lot_cannot_be_bought_again() {
 fn royalty_is_capped_at_mint() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
-    let _ = c.mint_proven("lot-a".into(), alice(), sale::MAX_ROYALTY_BPS + 1, creation_log(LOT_ADDR, false, false));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        alice(),
+        sale::MAX_ROYALTY_BPS + 1,
+        creation_log(LOT_ADDR, false, false),
+    );
 }
 
 #[test]
@@ -846,19 +1121,40 @@ fn nft_payout_matches_what_buy_credits() {
     let payout = c.nft_payout("0".into(), U128(PRICE), Some(2)).payout;
     call(bob(), PRICE);
     c.buy(0, 1);
-    assert_eq!(payout.get(&alice()).map(|v| v.0), Some(c.proceeds_of(alice()).0));
-    assert_eq!(payout.get(&admin()).map(|v| v.0), Some(c.proceeds_of(admin()).0));
+    assert_eq!(
+        payout.get(&alice()).map(|v| v.0),
+        Some(c.proceeds_of(alice()).0)
+    );
+    assert_eq!(
+        payout.get(&admin()).map(|v| v.0),
+        Some(c.proceeds_of(admin()).0)
+    );
 }
 
 #[test]
 fn minter_selling_their_own_lot_gets_the_sum() {
     let mut c = new_contract(Finality::Safe);
-    assert!(mint(&mut c, alice(), "lot-a", alice(), 250, LOT_KEY, creation_log(LOT_ADDR, false, false), attested()).is_some());
+    assert!(
+        mint(
+            &mut c,
+            alice(),
+            "lot-a",
+            alice(),
+            250,
+            LOT_KEY,
+            creation_log(LOT_ADDR, false, false),
+            attested()
+        )
+        .is_some()
+    );
     call(alice(), 1);
     let _ = c.seal(0, fees(1, 1));
     c.list(0, U128(PRICE));
     let payout = c.nft_payout("0".into(), U128(PRICE), None).payout;
-    assert_eq!((payout.len(), payout.get(&alice()).map(|v| v.0)), (1, Some(PRICE)));
+    assert_eq!(
+        (payout.len(), payout.get(&alice()).map(|v| v.0)),
+        (1, Some(PRICE))
+    );
     call(bob(), PRICE);
     c.buy(0, 1);
     assert_eq!(c.proceeds_of(alice()).0, PRICE);
@@ -874,7 +1170,11 @@ fn withdraw_zeroes_first_and_restores_once_on_failure() {
     assert_eq!(c.proceeds_of(alice()).0, 0, "zeroed before the transfer");
     as_contract();
     assert!(!c.on_withdraw(alice(), U128(975_000), Err(PromiseError::Failed)));
-    assert_eq!(c.proceeds_of(alice()).0, 975_000, "restored after a failed transfer");
+    assert_eq!(
+        c.proceeds_of(alice()).0,
+        975_000,
+        "restored after a failed transfer"
+    );
     call(alice(), 0);
     let _ = c.withdraw_proceeds();
     as_contract();
@@ -911,8 +1211,16 @@ fn mint_binds_the_token_and_stream_from_the_proven_log() {
         start_unlock: U128(0),
         cliff_unlock: U128(0),
     };
-    let source = Source { kind: "sablier-lockup-v4".into(), contract: LOCKUP.to_lowercase(), id: U128(7), schedule };
-    assert_eq!((lot.token, lot.source, lot.minter), (TOKEN.to_lowercase(), source, admin()));
+    let source = Source {
+        kind: "sablier-lockup-v4".into(),
+        contract: LOCKUP.to_lowercase(),
+        id: U128(7),
+        schedule,
+    };
+    assert_eq!(
+        (lot.token, lot.source, lot.minter),
+        (TOKEN.to_lowercase(), source, admin())
+    );
 }
 
 #[test]
@@ -940,7 +1248,12 @@ fn oversized_log_data_is_refused() {
 fn the_minter_pays_for_storage() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), 1);
-    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        alice(),
+        250,
+        creation_log(LOT_ADDR, false, false),
+    );
 }
 
 /// Runs the real mint chain in one context, so storage usage accumulates across the callbacks.
@@ -949,21 +1262,56 @@ fn the_minter_pays_for_the_lots_persisted_storage() {
     let mut c = new_contract(Finality::Safe);
     call(acc("lot.testnet"), ONE_NEAR);
     let before = env::storage_usage();
-    let _ = c.mint_proven("lot-a".into(), alice(), 250, creation_log(LOT_ADDR, false, false));
-    let actions: Vec<MockAction> = near_sdk::test_utils::get_created_receipts().into_iter().flat_map(|r| r.actions).collect();
-    let refund = actions.iter().find_map(|a| match a { MockAction::Transfer { deposit, .. } => Some(*deposit), _ => None }).unwrap();
-    let args: Value = actions.iter().find_map(|a| match a {
-        MockAction::FunctionCallWeight { method_name, args, .. } if method_name == b"on_derived" => serde_json::from_slice(args).ok(),
-        _ => None,
-    }).unwrap();
+    let _ = c.mint_proven(
+        "lot-a".into(),
+        alice(),
+        250,
+        creation_log(LOT_ADDR, false, false),
+    );
+    let actions: Vec<MockAction> = near_sdk::test_utils::get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .collect();
+    let refund = actions
+        .iter()
+        .find_map(|a| match a {
+            MockAction::Transfer { deposit, .. } => Some(*deposit),
+            _ => None,
+        })
+        .unwrap();
+    let args: Value = actions
+        .iter()
+        .find_map(|a| match a {
+            MockAction::FunctionCallWeight {
+                method_name, args, ..
+            } if method_name == b"on_derived" => serde_json::from_slice(args).ok(),
+            _ => None,
+        })
+        .unwrap();
     let storage: NearToken = serde_json::from_value(args["storage"].clone()).unwrap();
-    assert_eq!(refund.saturating_add(storage).saturating_add(mpc::REQUEST_DEPOSIT).as_yoctonear(), ONE_NEAR, "the minter keeps paying only storage and the MPC deposit");
+    assert_eq!(
+        refund
+            .saturating_add(storage)
+            .saturating_add(mpc::REQUEST_DEPOSIT)
+            .as_yoctonear(),
+        ONE_NEAR,
+        "the minter keeps paying only storage and the MPC deposit"
+    );
 
     let log: CreationLog = serde_json::from_value(args["log"].clone()).unwrap();
-    let _ = c.on_derived(0, args["recipient"].as_str().unwrap().into(), log, storage, Ok(LOT_KEY.into()));
+    let _ = c.on_derived(
+        0,
+        args["recipient"].as_str().unwrap().into(),
+        log,
+        storage,
+        Ok(LOT_KEY.into()),
+    );
     assert!(c.on_mint_verified(0, storage, attested()).is_some());
     c.lots.flush();
-    assert_eq!(storage, env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128));
+    assert_eq!(
+        storage,
+        env::storage_byte_cost().saturating_mul((env::storage_usage() - before) as u128)
+    );
 }
 
 #[test]
@@ -971,7 +1319,12 @@ fn the_minter_pays_for_the_lots_persisted_storage() {
 fn names_are_bounded() {
     let mut c = new_contract(Finality::Safe);
     call(admin(), ONE_NEAR);
-    let _ = c.mint_proven("x".repeat(65), alice(), 250, creation_log(LOT_ADDR, false, false));
+    let _ = c.mint_proven(
+        "x".repeat(65),
+        alice(),
+        250,
+        creation_log(LOT_ADDR, false, false),
+    );
 }
 
 #[test]
@@ -984,8 +1337,13 @@ fn a_lot_awaiting_mpc_is_not_an_nft_yet() {
     let _ = c.on_derived(0, LOT_ADDR.into(), log, STORAGE, Ok(LOT_KEY.into()));
     assert_eq!(c.get_lot(0).unwrap().state, LotState::Minting);
     assert!(c.nft_token("0".into()).is_none());
-    assert_eq!((c.nft_total_supply().0, c.nft_tokens(None, None).len()), (0, 0));
-    let payout = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.nft_payout("0".into(), U128(PRICE), None)));
+    assert_eq!(
+        (c.nft_total_supply().0, c.nft_tokens(None, None).len()),
+        (0, 0)
+    );
+    let payout = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.nft_payout("0".into(), U128(PRICE), None)
+    }));
     assert!(payout.is_err(), "and has no payout");
 }
 
@@ -994,9 +1352,15 @@ fn tokens_carry_an_on_chain_title_card() {
     let c = active_lot();
     let meta = c.nft_token("0".into()).unwrap().metadata.unwrap();
     let media = meta.media.unwrap();
-    let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
+    let svg = near_sdk::base64::prelude::BASE64_STANDARD
+        .decode(media.trim_start_matches("data:image/svg+xml;base64,"))
+        .unwrap();
     let svg = String::from_utf8(svg).unwrap();
-    assert!(svg.contains("Quitclaim lot #0") && svg.contains(LOT_ADDR) && svg.contains("Sablier stream 7"));
+    assert!(
+        svg.contains("Quitclaim lot #0")
+            && svg.contains(LOT_ADDR)
+            && svg.contains("Sablier stream 7")
+    );
 }
 
 fn carol() -> AccountId {
@@ -1081,7 +1445,9 @@ fn token_ids(tokens: Vec<near_contract_standards::non_fungible_token::Token>) ->
 }
 
 fn burned_lease_token() -> bool {
-    near_sdk::test_utils::get_logs().iter().any(|l| l.contains(r#""event":"nft_burn""#) && l.contains(r#""0-lease""#))
+    near_sdk::test_utils::get_logs()
+        .iter()
+        .any(|l| l.contains(r#""event":"nft_burn""#) && l.contains(r#""0-lease""#))
 }
 
 #[test]
@@ -1089,9 +1455,23 @@ fn taking_a_lease_pays_owner_and_minter_and_hands_over_control() {
     let c = leased();
     let lot = c.get_lot(0).unwrap();
     let lease = lot.lease.clone().unwrap();
-    assert_eq!((lot.state, lot.version, lot.lease_offer), (LotState::Active, 2, None));
-    assert_eq!((lease.holder, lease.start_ms, lease.ends_at_ms, lease.committed.0), (bob(), TAKEN, ENDS, 0));
-    assert_eq!((c.proceeds_of(alice()).0, c.proceeds_of(admin()).0), (975_000, 25_000));
+    assert_eq!(
+        (lot.state, lot.version, lot.lease_offer),
+        (LotState::Active, 2, None)
+    );
+    assert_eq!(
+        (
+            lease.holder,
+            lease.start_ms,
+            lease.ends_at_ms,
+            lease.committed.0
+        ),
+        (bob(), TAKEN, ENDS, 0)
+    );
+    assert_eq!(
+        (c.proceeds_of(alice()).0, c.proceeds_of(admin()).0),
+        (975_000, 25_000)
+    );
     assert_eq!(c.nft_token("0-lease".into()).unwrap().owner_id, bob());
     assert_eq!(c.nft_token("0".into()).unwrap().owner_id, alice());
 }
@@ -1105,9 +1485,17 @@ fn the_budget_grows_with_the_stream_and_a_nonce_is_charged_its_largest_transfer(
     lessee_requests(&mut c, 10 * TOKEN_UNIT, claim_fees());
     assert_eq!(committed(&c), 10 * TOKEN_UNIT);
     lessee_requests(&mut c, 25 * TOKEN_UNIT, fees(55_000_000, 1_100_000));
-    assert_eq!(committed(&c), 25 * TOKEN_UNIT, "a larger replacement costs only the difference");
+    assert_eq!(
+        committed(&c),
+        25 * TOKEN_UNIT,
+        "a larger replacement costs only the difference"
+    );
     lessee_requests(&mut c, 5 * TOKEN_UNIT, fees(60_500_000, 1_210_000));
-    assert_eq!(committed(&c), 25 * TOKEN_UNIT, "a smaller replacement costs nothing");
+    assert_eq!(
+        committed(&c),
+        25 * TOKEN_UNIT,
+        "a smaller replacement costs nothing"
+    );
     clock(TAKEN + 60_000);
     call(bob(), 0);
     assert_eq!(c.lease_budget(0).allowed.0, 60 * TOKEN_UNIT);
@@ -1192,7 +1580,10 @@ fn anyone_seals_a_run_out_lease_and_control_returns_to_the_owner() {
     let mut c = leased();
     clock(ENDS);
     call(carol(), 1);
-    assert!(matches!(c.seal(0, fees(1, 1)), PromiseOrValue::Value(LotState::Clean)));
+    assert!(matches!(
+        c.seal(0, fees(1, 1)),
+        PromiseOrValue::Value(LotState::Clean)
+    ));
     assert!(burned_lease_token());
     let lot = c.get_lot(0).unwrap();
     assert_eq!((lot.state, lot.lease), (LotState::Clean, None));
@@ -1210,18 +1601,28 @@ fn expiry_burns_and_proves_the_lessees_signature_before_control_returns() {
     call(bob(), 1);
     let _ = c.request_transfer(0, ALICE_EVM.into(), U128(AMOUNT), 150_000, claim_fees());
     as_contract();
-    assert_eq!(c.on_signed(0, 0, mpc_sig()).as_deref(), Some(CLAIM0_RAW), "bob keeps a signed transfer");
+    assert_eq!(
+        c.on_signed(0, 0, mpc_sig()).as_deref(),
+        Some(CLAIM0_RAW),
+        "bob keeps a signed transfer"
+    );
     clock(ENDS);
     call(carol(), 1);
     let _ = c.seal(0, fees(55_000_000, 1_100_000));
     as_contract();
     let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
-    assert!(c.nft_token("0-lease".into()).is_some(), "the lease holds until its signatures are proven consumed");
+    assert!(
+        c.nft_token("0-lease".into()).is_some(),
+        "the lease holds until its signatures are proven consumed"
+    );
     assert!(prove_ok(&mut c, 0));
     assert!(burned_lease_token());
     let lot = c.get_lot(0).unwrap();
     assert_eq!(*Contract::controller(&lot), alice());
-    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+    assert_eq!(
+        (lot.state, lot.lease, lot.next_nonce),
+        (LotState::Clean, None, 1)
+    );
 }
 
 /// A lessee who seals and unseals while MPC fails must not fill nonce 0 with unsigned burns, or
@@ -1241,7 +1642,11 @@ fn failed_signing_cannot_strand_an_expired_lease() {
         c.unseal(0);
     }
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.issued.len(), lot.issued[1].kind.clone()), (2, Kind::Burn), "each seal signs the same burn again");
+    assert_eq!(
+        (lot.issued.len(), lot.issued[1].kind.clone()),
+        (2, Kind::Burn),
+        "each seal signs the same burn again"
+    );
     clock(ENDS);
     call(carol(), 1);
     let _ = c.seal(0, bump(f));
@@ -1251,7 +1656,10 @@ fn failed_signing_cannot_strand_an_expired_lease() {
     assert!(burned_lease_token());
     let lot = c.get_lot(0).unwrap();
     assert_eq!(*Contract::controller(&lot), alice());
-    assert_eq!((lot.state, lot.lease, lot.next_nonce), (LotState::Clean, None, 1));
+    assert_eq!(
+        (lot.state, lot.lease, lot.next_nonce),
+        (LotState::Clean, None, 1)
+    );
 }
 
 /// Rebumps while MPC fails must not use up the burns at the stuck nonce, or a rescue at the next
@@ -1274,18 +1682,36 @@ fn rebumps_under_failed_signing_re_sign_the_burn_in_place() {
         sign_fails(&mut c);
     }
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.state, lot.issued.len()), (LotState::Sealing, 2), "the issued list never grows");
+    assert_eq!(
+        (lot.state, lot.issued.len()),
+        (LotState::Sealing, 2),
+        "the issued list never grows"
+    );
 
     call(carol(), 1);
     let _ = c.rescue(0, fees(evm::MIN_FEE, evm::MIN_FEE));
     let rescue = held_signs(&mut c);
     call(carol(), 1);
     let _ = c.rebump(0, 0, f);
-    assert_eq!(held_signs(&mut c), lot.issued[1].seq, "the stuck nonce's burn is still signable after the rescue");
-    assert!(c.get_lot(0).unwrap().issued.iter().filter(|i| i.kind == Kind::Burn).all(|i| i.tx_hash.is_some()));
+    assert_eq!(
+        held_signs(&mut c),
+        lot.issued[1].seq,
+        "the stuck nonce's burn is still signable after the rescue"
+    );
+    assert!(
+        c.get_lot(0)
+            .unwrap()
+            .issued
+            .iter()
+            .filter(|i| i.kind == Kind::Burn)
+            .all(|i| i.tx_hash.is_some())
+    );
     assert!(prove_ok(&mut c, rescue));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.state, lot.lease, lot.next_nonce, lot.issued.len()), (LotState::Clean, None, 2, 0));
+    assert_eq!(
+        (lot.state, lot.lease, lot.next_nonce, lot.issued.len()),
+        (LotState::Clean, None, 2, 0)
+    );
 }
 
 #[test]
@@ -1334,9 +1760,15 @@ fn a_lease_that_runs_out_at_clean_ends_on_the_next_call() {
     let mut c = lessee_sealed_clean();
     clock(ENDS);
     call(alice(), 0);
-    assert!(c.get_lot(0).unwrap().lease.is_some(), "nothing has closed it yet");
+    assert!(
+        c.get_lot(0).unwrap().lease.is_some(),
+        "nothing has closed it yet"
+    );
     assert!(c.nft_token("0-lease".into()).is_none());
-    assert_eq!((c.nft_supply_for_owner(bob()).0, c.nft_total_supply().0), (0, 1));
+    assert_eq!(
+        (c.nft_supply_for_owner(bob()).0, c.nft_total_supply().0),
+        (0, 1)
+    );
     c.list(0, U128(PRICE));
     assert!(burned_lease_token());
     let lot = c.get_lot(0).unwrap();
@@ -1391,7 +1823,10 @@ fn a_lease_is_taken_only_on_the_term_the_lessee_accepted() {
     clock(TAKEN);
     call(alice(), 0);
     c.offer_lease(0, quoted.price, TAKEN + 1_000);
-    assert_eq!(c.get_lot(0).unwrap().lease_offer.unwrap().version, quoted.version);
+    assert_eq!(
+        c.get_lot(0).unwrap().lease_offer.unwrap().version,
+        quoted.version
+    );
     call(bob(), PRICE);
     c.take_lease(0, quoted.version, quoted.ends_at_ms);
 }
@@ -1429,7 +1864,10 @@ fn a_listing_and_a_lease_offer_replace_each_other() {
     call(alice(), 0);
     c.list(0, U128(PRICE));
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.lease_offer, lot.listing.map(|l| l.item)), (None, Some(Item::Title)));
+    assert_eq!(
+        (lot.lease_offer, lot.listing.map(|l| l.item)),
+        (None, Some(Item::Title))
+    );
     c.offer_lease(0, U128(PRICE), ENDS);
     let lot = c.get_lot(0).unwrap();
     assert_eq!((lot.lease_offer.is_some(), lot.listing), (true, None));
@@ -1446,12 +1884,29 @@ fn lease_resale_pays_the_lessee_and_minter_and_carries_the_budget() {
     let lot = c.get_lot(0).unwrap();
     assert_eq!(lot.listing.as_ref().unwrap().item, Item::Lease);
     let payout = c.nft_payout("0-lease".into(), U128(PRICE), None).payout;
-    assert_eq!((payout.get(&bob()).map(|v| v.0), payout.get(&admin()).map(|v| v.0)), (Some(975_000), Some(25_000)));
+    assert_eq!(
+        (
+            payout.get(&bob()).map(|v| v.0),
+            payout.get(&admin()).map(|v| v.0)
+        ),
+        (Some(975_000), Some(25_000))
+    );
     call(carol(), PRICE);
     c.buy(0, lot.version);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.owner, lot.lease.as_ref().unwrap().holder.clone(), lot.state), (alice(), carol(), LotState::Active));
-    assert_eq!((c.proceeds_of(bob()).0, c.proceeds_of(admin()).0), (975_000, 50_000), "the minter earns on the take and the resale");
+    assert_eq!(
+        (
+            lot.owner,
+            lot.lease.as_ref().unwrap().holder.clone(),
+            lot.state
+        ),
+        (alice(), carol(), LotState::Active)
+    );
+    assert_eq!(
+        (c.proceeds_of(bob()).0, c.proceeds_of(admin()).0),
+        (975_000, 50_000),
+        "the minter earns on the take and the resale"
+    );
     assert_eq!(committed(&c), AMOUNT, "the budget carries over");
 }
 
@@ -1462,8 +1917,15 @@ fn the_lease_token_moves_by_nft_transfer_from_clean() {
     call(bob(), 1);
     c.nft_transfer(carol(), "0-lease".into(), None, None);
     let lot = c.get_lot(0).unwrap();
-    assert_eq!((lot.lease.unwrap().holder, lot.state, lot.version), (carol(), LotState::Active, version + 1));
-    assert!(near_sdk::test_utils::get_logs().iter().any(|l| l.contains(r#""event":"nft_transfer""#) && l.contains(r#""0-lease""#)));
+    assert_eq!(
+        (lot.lease.unwrap().holder, lot.state, lot.version),
+        (carol(), LotState::Active, version + 1)
+    );
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|l| l.contains(r#""event":"nft_transfer""#) && l.contains(r#""0-lease""#))
+    );
 }
 
 #[test]
@@ -1490,12 +1952,34 @@ fn nft_views_include_live_lease_tokens() {
     assert_eq!(c.nft_total_supply().0, 2);
     assert_eq!(token_ids(c.nft_tokens(None, None)), ["0", "0-lease"]);
     assert_eq!(token_ids(c.nft_tokens(Some(U128(1)), Some(1))), ["0-lease"]);
-    assert_eq!((c.nft_supply_for_owner(bob()).0, c.nft_supply_for_owner(alice()).0), (1, 1));
-    assert_eq!(token_ids(c.nft_tokens_for_owner(bob(), None, None)), ["0-lease"]);
-    let media = c.nft_token("0-lease".into()).unwrap().metadata.unwrap().media.unwrap();
-    let svg = near_sdk::base64::prelude::BASE64_STANDARD.decode(media.trim_start_matches("data:image/svg+xml;base64,")).unwrap();
+    assert_eq!(
+        (
+            c.nft_supply_for_owner(bob()).0,
+            c.nft_supply_for_owner(alice()).0
+        ),
+        (1, 1)
+    );
+    assert_eq!(
+        token_ids(c.nft_tokens_for_owner(bob(), None, None)),
+        ["0-lease"]
+    );
+    let media = c
+        .nft_token("0-lease".into())
+        .unwrap()
+        .metadata
+        .unwrap()
+        .media
+        .unwrap();
+    let svg = near_sdk::base64::prelude::BASE64_STANDARD
+        .decode(media.trim_start_matches("data:image/svg+xml;base64,"))
+        .unwrap();
     let svg = String::from_utf8(svg).unwrap();
-    assert!(svg.contains("Leasehold on lot #0") && svg.contains("Until 1970-01-01 00:28 UTC") && svg.contains("Budget left 30000000000000000000"), "{svg}");
+    assert!(
+        svg.contains("Leasehold on lot #0")
+            && svg.contains("Until 1970-01-01 00:28 UTC")
+            && svg.contains("Budget left 30000000000000000000"),
+        "{svg}"
+    );
 }
 
 #[test]
@@ -1503,7 +1987,10 @@ fn a_page_may_start_at_the_end_of_titles_and_leases() {
     let c = leased();
     call(bob(), 0);
     assert!(c.nft_tokens(Some(U128(2)), None).is_empty());
-    assert!(c.nft_tokens_for_owner(bob(), Some(U128(1)), None).is_empty());
+    assert!(
+        c.nft_tokens_for_owner(bob(), Some(U128(1)), None)
+            .is_empty()
+    );
 }
 
 #[test]
@@ -1535,13 +2022,20 @@ fn titles_listed_before_settling_cover_every_run_out_lease() {
     call(carol(), 1);
     let mut tokens = c.nft_tokens(Some(U128(0)), Some(100));
     tokens.extend(c.nft_tokens(Some(U128(100)), Some(100)));
-    let titles: Vec<LotId> = tokens.iter().filter_map(|t| t.token_id.parse().ok()).collect();
+    let titles: Vec<LotId> = tokens
+        .iter()
+        .filter_map(|t| t.token_id.parse().ok())
+        .collect();
     assert_eq!(titles, (0..51).collect::<Vec<_>>());
     for id in titles {
         call(carol(), 1);
         let _ = c.seal(id, fees(evm::MIN_FEE, evm::MIN_FEE));
     }
-    assert_eq!(c.nft_total_supply().0, 51, "fewer tokens than the second page's offset");
+    assert_eq!(
+        c.nft_total_supply().0,
+        51,
+        "fewer tokens than the second page's offset"
+    );
     assert!((0..51).all(|id| c.get_lot(id).unwrap().lease.is_none()));
 }
 
@@ -1558,7 +2052,9 @@ fn a_zero_limit_is_refused() {
 #[test]
 fn vested_matches_sablier_on_the_real_creation_log() {
     let log: CreationLog = serde_json::from_str(REAL_CREATION_LOG).unwrap();
-    let schedule = source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap()).unwrap().schedule;
+    let schedule = source::decode(&log.to_evm_log().unwrap(), &LOCKUP.parse().unwrap())
+        .unwrap()
+        .schedule;
     for (t, streamed) in [
         (1793880382, 166_666_666_666_666_666_666),
         (1793881582, 500_000_000_000_000_000_000),
@@ -1581,14 +2077,59 @@ fn vested_matches_sablier_across_cliffs_unlocks_and_granularity() {
         cliff_unlock: U128(0),
     };
     let cases = [
-        ("76: cliff ahead, start unlock", schedule(1_000 * TOKEN_UNIT, 1790208000, 1805846400, 1821744000, 1, 100 * TOKEN_UNIT), 1793911308, 100 * TOKEN_UNIT),
-        ("99: no cliff, start unlock", schedule(20_000 * TOKEN_UNIT, 1791169008, 0, 1822705008, 1, 2_000 * TOKEN_UNIT), 1793911332, 3_565_253_424_657_534_246_575),
-        ("53: past the cliff", schedule(200_000_000_000_000, 1784100080, 1786692080, 1815636080, 1, 0), 1793911344, 49_884_355_997_788),
-        ("45: ended, daily granularity", schedule(5_000 * TOKEN_UNIT, 1779539575, 0, 1782522000, 86_400, 0), 1793911345, 5_000 * TOKEN_UNIT),
+        (
+            "76: cliff ahead, start unlock",
+            schedule(
+                1_000 * TOKEN_UNIT,
+                1790208000,
+                1805846400,
+                1821744000,
+                1,
+                100 * TOKEN_UNIT,
+            ),
+            1793911308,
+            100 * TOKEN_UNIT,
+        ),
+        (
+            "99: no cliff, start unlock",
+            schedule(
+                20_000 * TOKEN_UNIT,
+                1791169008,
+                0,
+                1822705008,
+                1,
+                2_000 * TOKEN_UNIT,
+            ),
+            1793911332,
+            3_565_253_424_657_534_246_575,
+        ),
+        (
+            "53: past the cliff",
+            schedule(
+                200_000_000_000_000,
+                1784100080,
+                1786692080,
+                1815636080,
+                1,
+                0,
+            ),
+            1793911344,
+            49_884_355_997_788,
+        ),
+        (
+            "45: ended, daily granularity",
+            schedule(5_000 * TOKEN_UNIT, 1779539575, 0, 1782522000, 86_400, 0),
+            1793911345,
+            5_000 * TOKEN_UNIT,
+        ),
     ];
     for (name, s, t, streamed) in cases {
         assert_eq!(s.vested(t), streamed, "stream {name}");
     }
     let daily = schedule(1_000, 0, 0, 864_000, 86_400, 0);
-    assert_eq!((daily.vested(86_399), daily.vested(3 * 86_400 + 5_000)), (0, 300), "whole granularity units only");
+    assert_eq!(
+        (daily.vested(86_399), daily.vested(3 * 86_400 + 5_000)),
+        (0, 300),
+        "whole granularity units only"
+    );
 }

@@ -376,27 +376,75 @@ async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Resul
     let c = TestChain::start().await?;
     assert_eq!(c.mint("lease").await?["id"], 0);
     let fees = json!({"max_fee":"1000000","max_prio":"1000000"});
-    c.call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 1).await?;
+    c.call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 1)
+        .await?;
     let ends_at_ms = c.now_ms().await? + 30_000;
-    c.call(&c.alice, &c.lot, "offer_lease", json!({"id":0,"price":ONE_NEAR.to_string(),"ends_at_ms":ends_at_ms}), 0).await?;
-    c.call(&c.bob, &c.lot, "take_lease", json!({"id":0,"version":1,"ends_at_ms":ends_at_ms}), ONE_NEAR).await?;
-    assert_eq!(c.view("nft_token", json!({"token_id":"0-lease"})).await?["owner_id"], c.bob.as_str());
+    c.call(
+        &c.alice,
+        &c.lot,
+        "offer_lease",
+        json!({"id":0,"price":ONE_NEAR.to_string(),"ends_at_ms":ends_at_ms}),
+        0,
+    )
+    .await?;
+    c.call(
+        &c.bob,
+        &c.lot,
+        "take_lease",
+        json!({"id":0,"version":1,"ends_at_ms":ends_at_ms}),
+        ONE_NEAR,
+    )
+    .await?;
+    assert_eq!(
+        c.view("nft_token", json!({"token_id":"0-lease"})).await?["owner_id"],
+        c.bob.as_str()
+    );
 
     let transfer = json!({"id":0,"to":ALICE_EVM,"amount":"10000000000000000000","gas_limit":150000,
         "fees":{"max_fee":"50000000","max_prio":"1000000"}});
-    let refused = c.call(&c.alice, &c.lot, "request_transfer", transfer.clone(), 1).await.unwrap_err();
-    assert!(refused.to_string().contains("not the lot controller"), "{refused}");
-    let start_ms = c.view("get_lot", json!({"id":0})).await?["lease"]["start_ms"].as_u64().unwrap();
+    let refused = c
+        .call(&c.alice, &c.lot, "request_transfer", transfer.clone(), 1)
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("not the lot controller"),
+        "{refused}"
+    );
+    let start_ms = c.view("get_lot", json!({"id":0})).await?["lease"]["start_ms"]
+        .as_u64()
+        .unwrap();
     c.wait_until(start_ms + 2_000).await?;
-    c.call(&c.bob, &c.lot, "request_transfer", transfer, 1).await?;
-    c.call(&c.bob, &c.lot, "register_signature", json!({"id":0,"seq":0,"r":TRANSFER_R,"s":TRANSFER_S,"v":1}), 0).await?;
-    assert_eq!(c.view("lease_budget", json!({"id":0})).await?["committed"], "10000000000000000000");
+    c.call(&c.bob, &c.lot, "request_transfer", transfer, 1)
+        .await?;
+    c.call(
+        &c.bob,
+        &c.lot,
+        "register_signature",
+        json!({"id":0,"seq":0,"r":TRANSFER_R,"s":TRANSFER_S,"v":1}),
+        0,
+    )
+    .await?;
+    assert_eq!(
+        c.view("lease_budget", json!({"id":0})).await?["committed"],
+        "10000000000000000000"
+    );
 
     c.wait_until(ends_at_ms).await?;
-    c.call(&c.minter, &c.lot, "seal", json!({"id":0,"fees":{"max_fee":"55000000","max_prio":"1100000"}}), 1).await?;
+    c.call(
+        &c.minter,
+        &c.lot,
+        "seal",
+        json!({"id":0,"fees":{"max_fee":"55000000","max_prio":"1100000"}}),
+        1,
+    )
+    .await?;
     let sealing = c.view("get_lot", json!({"id":0})).await?;
     assert_eq!(sealing["state"], "Sealing");
-    assert_eq!(sealing["lease"]["holder"], c.bob.as_str(), "the lease holds until its signatures are proven consumed");
+    assert_eq!(
+        sealing["lease"]["holder"],
+        c.bob.as_str(),
+        "the lease holds until its signatures are proven consumed"
+    );
 
     let proof = Contract(c.lot.clone())
         .call_function("prove", json!({"id":0,"seq":0}))
@@ -409,13 +457,27 @@ async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Resul
         .into_result()?;
     assert_eq!(proof.json::<Value>()?, true);
     assert!(
-        proof.logs().iter().any(|log| log.contains(r#""event":"nft_burn""#) && log.contains(r#""0-lease""#)),
+        proof
+            .logs()
+            .iter()
+            .any(|log| log.contains(r#""event":"nft_burn""#) && log.contains(r#""0-lease""#)),
         "proving the last nonce burns the lease token"
     );
     let lot = c.view("get_lot", json!({"id":0})).await?;
-    assert_eq!((&lot["state"], &lot["lease"], &lot["next_nonce"]), (&json!("Clean"), &Value::Null, &json!(1)));
-    assert_eq!(c.view("nft_token", json!({"token_id":"0-lease"})).await?, Value::Null);
-    c.call(&c.alice, &c.lot, "unseal", json!({"id":0}), 0).await?;
-    assert_eq!(c.view("get_lot", json!({"id":0})).await?["state"], "Active", "control is back with alice");
+    assert_eq!(
+        (&lot["state"], &lot["lease"], &lot["next_nonce"]),
+        (&json!("Clean"), &Value::Null, &json!(1))
+    );
+    assert_eq!(
+        c.view("nft_token", json!({"token_id":"0-lease"})).await?,
+        Value::Null
+    );
+    c.call(&c.alice, &c.lot, "unseal", json!({"id":0}), 0)
+        .await?;
+    assert_eq!(
+        c.view("get_lot", json!({"id":0})).await?["state"],
+        "Active",
+        "control is back with alice"
+    );
     Ok(())
 }

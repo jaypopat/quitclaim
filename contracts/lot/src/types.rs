@@ -1,7 +1,7 @@
 use near_sdk::json_types::U128;
 use std::collections::HashMap;
 
-use near_sdk::{near, AccountId};
+use near_sdk::{AccountId, near};
 
 pub use crate::source::Schedule;
 
@@ -24,7 +24,10 @@ pub enum LotState {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Kind {
     /// ERC-20 `transfer(to, amount)` on the lot's token. The only way value leaves a lot.
-    Transfer { to: String, amount: U128 },
+    Transfer {
+        to: String,
+        amount: U128,
+    },
     Burn,
 }
 
