@@ -5,10 +5,13 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 ## Layout
 
 - `contracts/lot` is the NEAR contract (Rust, `cargo near`, in the root Cargo workspace).
-- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/ops/src/sablier.ts`).
-- `packages/shared` holds chain config and lot-address derivation.
-- `packages/ops` holds Bun scripts.
+- Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/sdk/src/sablier.ts`).
+- `packages/shared` holds chain config, lot-address derivation and the contract ABI types. It is browser-safe.
+- `packages/sdk` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/sdk/base.ts`.
 - `apps/web` is the frontend.
+- `apps/keeper` is the keeper loop. It only finds pending lots and calls `settle`.
+- `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out.
+- Dependencies point one way: apps → `packages/sdk` → `packages/shared`. Apps never import each other.
 - `spikes/` is gitignored throwaway work. `spikes/notes/` holds the verified on-chain facts and tx links.
 
 ## Commands
@@ -20,7 +23,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run dev` serves the web app.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
-- `bun run e2e [minting|handover|recovery|lease]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `packages/ops/src/e2e/`.
+- `bun run e2e [minting|handover|recovery|lease]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `apps/cli/src/e2e/`.
 - `bun run heist [evidence.json]` verifies a published handover and replays its consumed retained transaction using public RPCs. It defaults to `reports/heist.json` and needs no keys, `.env`, or funds.
 - `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: seal or end a run-out lease, gas top-up, broadcast, prove, rescue. Every action is permissionless.

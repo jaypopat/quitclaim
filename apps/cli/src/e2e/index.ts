@@ -6,7 +6,7 @@
  *   bun run e2e handover        one scenario (minting, handover, recovery, lease)
  */
 import { contract } from "./context.ts";
-import { logger } from "../logger.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
 import { scenarioNames, type ScenarioName } from "./names.ts";
 import { Run } from "./report.ts";
 import { scenarios } from "./scenarios.ts";

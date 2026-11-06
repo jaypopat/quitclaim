@@ -1,4 +1,4 @@
-import { logger } from "./logger.ts";
+import { logger } from "@quitclaim/sdk/logger.ts";
 import {
   BaseError,
   createPublicClient,
@@ -17,13 +17,18 @@ import {
 import { baseSepolia } from "viem/chains";
 import { JsonRpcProvider } from "near-api-js";
 import { config, fetchLotAddress, type Finality } from "@quitclaim/shared";
-import { txUrl as baseTxUrl } from "./base.ts";
+import { txUrl as baseTxUrl } from "@quitclaim/sdk/base.ts";
 import {
   parseEvidence,
   type HeistEvidence,
   type NearRef,
 } from "./heist-evidence.ts";
-import { codeHash, fullAccessKeys, nearTxUrl, view } from "./near.ts";
+import {
+  codeHash,
+  fullAccessKeys,
+  nearTxUrl,
+  view,
+} from "@quitclaim/sdk/near.ts";
 
 type Transfer = { from: Address; to: Address; amount: bigint };
 type Mined = {
