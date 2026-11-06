@@ -1,4 +1,3 @@
-import { logger } from "./logger.ts";
 /**
  * Deletes every full-access key on LOT_CONTRACT, so nobody can redeploy or drain it again. Run it
  * once, last, on the final contract. It refuses unless the newest report of every e2e scenario for
@@ -10,6 +9,7 @@ import { Glob } from "bun";
 import { PublicKey, actions } from "near-api-js";
 import { scenarioNames } from "./e2e/names.ts";
 import { env } from "./env.ts";
+import { logger } from "./logger.ts";
 import {
   account,
   codeHash,

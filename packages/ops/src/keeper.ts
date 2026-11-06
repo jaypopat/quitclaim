@@ -78,11 +78,11 @@ async function broadcastAll(lot: Lot, steps: SettleStep[]) {
 }
 
 /** Waits for an issued tx to mine. Returns the highest-nonce success, and whether any reverted. */
-async function awaitMined(lot: Lot, steps: SettleStep[], timeoutMs = 180_000) {
+async function awaitMined(lot: Lot, steps: SettleStep[]) {
   const seen = new Set<number>();
   let mined: { issued: Issued; block: bigint } | null = null;
   let reverted = false;
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + 90_000;
   while (!mined && Date.now() < deadline) {
     for (const i of lot.issued.filter((i) => i.tx_hash && !seen.has(i.seq))) {
       const r = await base.receipt(i.tx_hash as Hex);
@@ -151,7 +151,7 @@ export async function settle(
     const lot = await mustLot(contract, id);
     if (!lot.issued.some((i) => i.tx_hash)) break;
     await broadcastAll(lot, steps);
-    const seen = await awaitMined(lot, steps, 90_000);
+    const seen = await awaitMined(lot, steps);
     reverted ||= seen.reverted;
 
     if (!seen.mined) {

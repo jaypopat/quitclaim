@@ -8,7 +8,7 @@ import { isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
 import { settle } from "../keeper.ts";
 import { provision, rebump, requestTransfer, rescue, seal } from "../lot.ts";
-import { call, view } from "../near.ts";
+import { call } from "../near.ts";
 import {
   alice,
   aliceEvm,
@@ -16,6 +16,7 @@ import {
   contract,
   keeper,
   lotOf,
+  proceeds,
   raw,
   transferTitle,
   withdrawTo,
@@ -113,14 +114,10 @@ export async function recovery(run: Run) {
     [s2.url, ...settleLinks(rr.steps)],
   );
 
-  const proceedsBefore = await view(contract, "proceeds_of", {
-    account_id: alice,
-  });
+  const proceedsBefore = await proceeds(alice);
   const t = await transferTitle(alice, id);
   const moved = await lotOf(id);
-  const proceedsAfter = await view(contract, "proceeds_of", {
-    account_id: alice,
-  });
+  const proceedsAfter = await proceeds(alice);
   run.record(
     "direct transfer",
     "nft_transfer from Clean moves the title and pays no royalty",

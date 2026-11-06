@@ -5,7 +5,6 @@
  * keeper seals and proves, the lease token burns, Carol's kept transfer is rejected, and Alice
  * withdraws again.
  */
-import { nearToYocto } from "near-api-js";
 import * as base from "../base.ts";
 import { settle } from "../keeper.ts";
 import {
@@ -30,17 +29,15 @@ import {
   keeper,
   lotOf,
   minter,
+  PRICE,
+  proceeds,
   raw,
+  royalty,
+  ROYALTY_BPS,
   transferTitle,
   withdrawTo,
 } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
-
-const PRICE = nearToYocto("0.1");
-const ROYALTY_BPS = 250;
-const royalty = (PRICE * BigInt(ROYALTY_BPS)) / 10_000n;
-const proceeds = async (account: string) =>
-  BigInt(await view(contract, "proceeds_of", { account_id: account }));
 
 export async function lease(run: Run) {
   const p = await provision({

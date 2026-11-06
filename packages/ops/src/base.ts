@@ -118,21 +118,12 @@ export async function receipt(hash: Hex): Promise<TransactionReceipt | null> {
 }
 
 /** Resolves once the chain head at `finality` has reached `block`, so a proof won't time out at MPC. */
-export async function waitFinality(
-  block: bigint,
-  finality: Finality,
-  pollMs = 15_000,
-) {
-  const tag =
-    finality === "Latest"
-      ? "latest"
-      : finality === "Safe"
-        ? "safe"
-        : "finalized";
+export async function waitFinality(block: bigint, finality: Finality) {
+  const blockTag = finality.toLowerCase() as Lowercase<Finality>;
   for (;;) {
-    const head = await pub.getBlock({ blockTag: tag });
-    if (head.number !== null && head.number >= block) return head.number;
-    await Bun.sleep(pollMs);
+    const head = await pub.getBlock({ blockTag });
+    if (head.number >= block) return head.number;
+    await Bun.sleep(15_000);
   }
 }
 

@@ -101,6 +101,9 @@ impl Contract {
     /// Only one tx per nonce can land, so a transfer costs only what it adds over the largest
     /// transfer already issued at its nonce.
     pub(crate) fn charge_lease(lot: &mut Lot, nonce: u64, amount: u128) {
+        let Some(lease) = lot.lease.as_mut() else {
+            return;
+        };
         let prior = lot
             .issued
             .iter()
@@ -112,9 +115,6 @@ impl Contract {
             .max()
             .unwrap_or(0);
         let schedule = &lot.source.schedule;
-        let Some(lease) = lot.lease.as_mut() else {
-            return;
-        };
         let now = env::block_timestamp_ms();
         require!(now < lease.ends_at_ms, "the lease has run out");
         let committed = lease.committed.0 + amount.saturating_sub(prior);

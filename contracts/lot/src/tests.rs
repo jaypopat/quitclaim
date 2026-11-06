@@ -659,13 +659,8 @@ fn seal_with_nothing_outstanding_is_clean_at_once() {
 
 #[test]
 fn full_handover_alice_to_bob() {
-    let mut c = signed_transfer0();
-    call(alice(), 1);
-    let _ = c.seal(0, fees(55_000_000, 1_100_000));
+    let mut c = sealing_with_burn();
     assert_eq!(c.get_lot(0).unwrap().state, LotState::Sealing);
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
-    call(bob(), 0);
     assert!(
         prove_ok(&mut c, 0),
         "the retained claim mined first; that consumes the nonce too"
@@ -697,11 +692,7 @@ fn transfer_with_a_pending_request_is_refused() {
 #[test]
 #[should_panic(expected = "lot is not Active")]
 fn no_claims_while_sealing() {
-    let mut c = signed_transfer0();
-    call(alice(), 1);
-    let _ = c.seal(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    let mut c = sealing_with_burn();
     call(alice(), 1);
     let _ = c.request_transfer(
         0,
@@ -757,11 +748,7 @@ fn anyone_can_replace_a_signed_burn_with_higher_fees() {
 
 #[test]
 fn rescue_burn_at_next_nonce_proves_the_stuck_one() {
-    let mut c = signed_transfer0();
-    call(alice(), 1);
-    let _ = c.seal(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    let mut c = sealing_with_burn();
     call(bob(), 1);
     let _ = c.rescue(0, fees(55_000_000, 1_100_000));
     let rescue_seq = 2;
@@ -782,11 +769,7 @@ fn rescue_burn_at_next_nonce_proves_the_stuck_one() {
 #[test]
 #[should_panic(expected = "a rescue burn is outstanding")]
 fn unseal_refused_while_a_rescue_burn_is_outstanding() {
-    let mut c = signed_transfer0();
-    call(alice(), 1);
-    let _ = c.seal(0, fees(55_000_000, 1_100_000));
-    as_contract();
-    let _ = c.on_signed(0, 1, Err(PromiseError::Failed));
+    let mut c = sealing_with_burn();
     call(bob(), 1);
     let _ = c.rescue(0, fees(55_000_000, 1_100_000));
     as_contract();
@@ -1091,7 +1074,7 @@ fn a_sold_lot_cannot_be_bought_again() {
     let mut c = listed_lot();
     call(bob(), PRICE);
     c.buy(0, 1);
-    call(acc("carol.testnet"), PRICE);
+    call(carol(), PRICE);
     c.buy(0, 2);
 }
 
@@ -1268,26 +1251,15 @@ fn the_minter_pays_for_the_lots_persisted_storage() {
         250,
         creation_log(LOT_ADDR, false, false),
     );
-    let actions: Vec<MockAction> = near_sdk::test_utils::get_created_receipts()
+    let refund = near_sdk::test_utils::get_created_receipts()
         .into_iter()
         .flat_map(|r| r.actions)
-        .collect();
-    let refund = actions
-        .iter()
         .find_map(|a| match a {
-            MockAction::Transfer { deposit, .. } => Some(*deposit),
+            MockAction::Transfer { deposit, .. } => Some(deposit),
             _ => None,
         })
         .unwrap();
-    let args: Value = actions
-        .iter()
-        .find_map(|a| match a {
-            MockAction::FunctionCallWeight {
-                method_name, args, ..
-            } if method_name == b"on_derived" => serde_json::from_slice(args).ok(),
-            _ => None,
-        })
-        .unwrap();
+    let args = scheduled("on_derived");
     let storage: NearToken = serde_json::from_value(args["storage"].clone()).unwrap();
     assert_eq!(
         refund

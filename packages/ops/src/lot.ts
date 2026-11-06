@@ -87,11 +87,10 @@ export async function provision(opts: {
     throw new Error(
       `mint failed: ${mint.ok ? "rolled back (see contract logs)" : mint.error}`,
     );
-  if (mint.value.address.toLowerCase() !== address.toLowerCase()) {
+  if (mint.value.address.toLowerCase() !== address.toLowerCase())
     throw new Error(
       `contract derived ${mint.value.address}, expected ${address}`,
     );
-  }
   return {
     id: mint.value.id,
     address,
@@ -120,8 +119,7 @@ export async function position(lot: Lot) {
 }
 
 export async function floor(lot: Lot, nonce: number): Promise<Fees> {
-  const f = await base.floorFees();
-  return nextFees(lot.issued, nonce, { maxFee: f.maxFee, maxPrio: f.maxPrio });
+  return nextFees(lot.issued, nonce, await base.floorFees());
 }
 
 export const mustLot = async (contract: string, id: number) => {
@@ -271,14 +269,6 @@ export async function takeLease(
     { id, version: offer.version, ends_at_ms: offer.ends_at_ms },
     { deposit: BigInt(offer.price) },
   );
-}
-
-export async function surrenderLease(
-  contract: string,
-  holder: string,
-  id: number,
-) {
-  return call(holder, contract, "surrender_lease", { id });
 }
 
 export async function endLease(contract: string, signer: string, id: number) {
