@@ -82,9 +82,7 @@ impl Contract {
         gas_limit: u64,
         fees: Fees,
     ) -> Promise {
-        if let Err(e) = evm::check_fees(&lot.issued, nonce, &fees, &kind) {
-            env::panic_str(e);
-        }
+        evm::check_fees(&lot.issued, nonce, &fees, &kind).unwrap_or_else(|e| env::panic_str(e));
         lot.issued.push(Issued {
             seq: lot.next_seq,
             nonce,
@@ -458,7 +456,7 @@ impl Contract {
             log!("lot {} seq {} already cleared by a proof", id, seq);
             return None;
         };
-        let signed = sig
+        let Some(signed) = sig
             .ok()
             .and_then(|v| serde_json::from_value::<SignatureResponse>(v).ok())
             .and_then(mpc::parse_signature)
@@ -470,20 +468,18 @@ impl Contract {
                     v,
                     &lot_addr,
                 )
-            });
-        let raw = signed.map(|t| {
-            lot.issued[pos].tx_hash = Some(t.hash);
-            lot.issued[pos].raw_tx = Some(t.raw.clone());
-            t.raw
-        });
-        if raw.is_none() {
+            })
+        else {
             log!(
                 "lot {} seq {} has no valid signature recorded; it stays issued",
                 id,
                 seq
             );
-        }
-        raw
+            return None;
+        };
+        lot.issued[pos].tx_hash = Some(signed.hash);
+        lot.issued[pos].raw_tx = Some(signed.raw.clone());
+        Some(signed.raw)
     }
 
     /// Fallback when `on_signed` recorded nothing: anyone submits the public MPC signature.

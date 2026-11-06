@@ -19,8 +19,6 @@ import { JsonRpcProvider } from "near-api-js";
 import { config, fetchLotAddress, type Finality } from "@quitclaim/shared";
 import { txUrl as baseTxUrl } from "./base.ts";
 import {
-  natural,
-  object,
   parseEvidence,
   type HeistEvidence,
   type NearRef,
@@ -47,6 +45,17 @@ type Call = {
   args: Record<string, unknown>;
   ok: boolean;
   value: string | null;
+};
+type VerifyArgs = {
+  request: {
+    domain_id: number;
+    request: { Base: { tx_id: string; finality: Finality } };
+  };
+};
+type Nep171Event = {
+  standard: string;
+  event: string;
+  data: { old_owner_id: string; new_owner_id: string; token_ids: string[] }[];
 };
 type NearHistory = {
   receiver: string;
@@ -356,10 +365,6 @@ async function checkSignedTransfer(evidence: HeistEvidence) {
     transaction.chainId === config.evm.chainId,
     "signed withdrawal uses the wrong chain",
   );
-  requireFact(
-    evidence.chainId === config.evm.chainId,
-    "evidence uses the wrong chain",
-  );
   const sender = await recoverTransactionAddress({
     serializedTransaction: evidence.retained,
   });
@@ -382,7 +387,7 @@ async function checkSignedTransfer(evidence: HeistEvidence) {
   );
   return {
     sender,
-    nonce: natural(transaction.nonce, "signed nonce"),
+    nonce: transaction.nonce ?? 0,
     amount: payment.amount,
   };
 }
@@ -466,11 +471,8 @@ function checkProof(
       call.method === "verify_foreign_transaction",
   );
   if (!mpc?.ok) throw new Error("missing successful MPC verification receipt");
-  const request = object(mpc.args.request, "MPC request");
-  const base = object(
-    object(request.request, "foreign request").Base,
-    "Base request",
-  );
+  const { request } = mpc.args as VerifyArgs;
+  const base = request.request.Base;
   requireFact(
     base.tx_id === evidence.consumingTx.slice(2),
     "MPC verified another consuming transaction",
@@ -523,25 +525,15 @@ function checkSale(evidence: HeistEvidence, observed: Observation) {
   const titleChanged = sale.logs
     .filter((log) => log.startsWith("EVENT_JSON:"))
     .some((log) => {
-      const event = object(
-        JSON.parse(log.slice("EVENT_JSON:".length)),
-        "NEP-171 event",
-      );
-      if (
-        event.standard !== "nep171" ||
-        event.event !== "nft_transfer" ||
-        !Array.isArray(event.data)
-      )
+      const event: Nep171Event = JSON.parse(log.slice("EVENT_JSON:".length));
+      if (event.standard !== "nep171" || event.event !== "nft_transfer")
         return false;
-      return event.data.some((value) => {
-        const transfer = object(value, "title transfer");
-        return (
+      return event.data.some(
+        (transfer) =>
           transfer.old_owner_id === evidence.seller.near &&
           transfer.new_owner_id === evidence.buyer.near &&
-          Array.isArray(transfer.token_ids) &&
-          transfer.token_ids.includes(String(evidence.lot.id))
-        );
-      });
+          transfer.token_ids.includes(String(evidence.lot.id)),
+      );
     });
   requireFact(
     titleChanged,

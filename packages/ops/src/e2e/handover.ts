@@ -4,9 +4,9 @@
  * a minter royalty; payouts are pulled; Alice is locked out; Bob withdraws to himself, then resells
  * to Carol: three owners, one address.
  */
-import { nearToYocto } from "near-api-js";
 import { config, isBurn } from "@quitclaim/shared";
 import * as base from "../base.ts";
+import { retainedTx } from "../heist-evidence.ts";
 import { provenMined, settle } from "../keeper.ts";
 import {
   buy,
@@ -18,7 +18,6 @@ import {
   seal,
   withdraw,
 } from "../lot.ts";
-import { view } from "../near.ts";
 import * as sablier from "../sablier.ts";
 import {
   alice,
@@ -30,15 +29,15 @@ import {
   minter,
   keeper,
   lotOf,
+  PRICE,
+  proceeds,
   raw,
+  royalty,
+  ROYALTY_BPS,
   transferTitle,
   withdrawTo,
 } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
-import { retainedBytes } from "../heist-evidence.ts";
-
-const PRICE = nearToYocto("0.1");
-const ROYALTY_BPS = 250;
 
 export async function handover(run: Run) {
   const p = await provision({
@@ -148,12 +147,8 @@ export async function handover(run: Run) {
     heist?.status === "nonce-too-low",
   );
 
-  const sellerBefore = BigInt(
-    await view(contract, "proceeds_of", { account_id: alice }),
-  );
-  const minterBefore = BigInt(
-    await view(contract, "proceeds_of", { account_id: minter }),
-  );
+  const sellerBefore = await proceeds(alice);
+  const minterBefore = await proceeds(minter);
   const l = await list(contract, alice, id, PRICE);
   const listed = await lotOf(id);
   run.record(
@@ -180,13 +175,8 @@ export async function handover(run: Run) {
 
   const sale = await buy(contract, bob, id);
   const moved = await lotOf(id);
-  const royalty = (PRICE * BigInt(ROYALTY_BPS)) / 10_000n;
-  const sellerGot =
-    BigInt(await view(contract, "proceeds_of", { account_id: alice })) -
-    sellerBefore;
-  const minterGot =
-    BigInt(await view(contract, "proceeds_of", { account_id: minter })) -
-    minterBefore;
+  const sellerGot = (await proceeds(alice)) - sellerBefore;
+  const minterGot = (await proceeds(minter)) - minterBefore;
   run.record(
     "bob buys",
     "one call moves the title and credits seller and minter (2.5% royalty)",
@@ -209,7 +199,7 @@ export async function handover(run: Run) {
       ws.value === true &&
       wi.ok &&
       wi.value === true &&
-      (await view(contract, "proceeds_of", { account_id: alice })) === "0",
+      (await proceeds(alice)) === 0n,
     [ws.url, wi.url],
   );
 
@@ -239,17 +229,13 @@ export async function handover(run: Run) {
     [...wb.links, ...settleLinks(sb.steps)],
   );
 
-  const minterBeforeResale = BigInt(
-    await view(contract, "proceeds_of", { account_id: minter }),
-  );
+  const minterBeforeResale = await proceeds(minter);
   const bs = await seal(contract, bob, id);
   const bobLot = await lotOf(id);
   const bl = await list(contract, bob, id, PRICE);
   const resale = await buy(contract, carol, id);
   const third = await lotOf(id);
-  const minterGotAgain =
-    BigInt(await view(contract, "proceeds_of", { account_id: minter })) -
-    minterBeforeResale;
+  const minterGotAgain = (await proceeds(minter)) - minterBeforeResale;
   const resold = await sablier.titleSearch(p.streamId, p.address, p.token);
   run.record(
     "bob resells to carol",
@@ -275,7 +261,7 @@ export async function handover(run: Run) {
       lot: { id, address: p.address, token: p.token },
       seller: { near: alice, evm: aliceEvm },
       buyer: { near: bob, evm: bobEvm },
-      retained: retainedBytes(retained),
+      retained: retainedTx.parse(retained),
       consumingTx: consumed.mined.tx,
       proof: { hash: consumed.proof.outcome.tx, signer: keeper },
       sale: { hash: sale.tx, signer: bob },
