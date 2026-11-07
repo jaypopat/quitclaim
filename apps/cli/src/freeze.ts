@@ -10,13 +10,8 @@ import { PublicKey, actions } from "near-api-js";
 import { scenarioNames } from "./e2e/names.ts";
 import { env } from "@quitclaim/sdk/env.ts";
 import { logger } from "@quitclaim/sdk/logger.ts";
-import {
-  account,
-  codeHash,
-  fullAccessKeys,
-  getFinality,
-  nearTxUrl,
-} from "@quitclaim/sdk/near.ts";
+import { account, getFinality } from "@quitclaim/sdk/near.ts";
+import { codeHash, fullAccessKeys, nearTxUrl } from "@quitclaim/shared/near.ts";
 
 const contractId = env.lotContract();
 

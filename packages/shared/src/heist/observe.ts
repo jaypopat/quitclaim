@@ -9,15 +9,24 @@ import {
   type TransactionSerializedEIP1559,
 } from "viem";
 import { baseSepolia } from "viem/chains";
-import { JsonRpcProvider } from "near-api-js";
-import { config, fetchLotAddress, type Finality } from "@quitclaim/shared";
-import {
-  codeHash,
-  fullAccessKeys,
-  nearTxUrl,
-  view,
-} from "@quitclaim/sdk/near.ts";
-import type { HeistEvidence, NearRef } from "./heist-evidence.ts";
+import { base64Decode, bytesToString, JsonRpcProvider } from "near-api-js";
+import { fetchLotAddress } from "../address.ts";
+import { config } from "../config.ts";
+import type { Finality } from "../lot.gen.ts";
+import { codeHash, fullAccessKeys, nearTxUrl, nearView } from "../near.ts";
+import { z } from "zod";
+import type { HeistEvidence, NearRef } from "./evidence.ts";
+
+/** Only the fields the heist reads, so evidence from an older deploy of the contract still parses. */
+const lotFacts = z
+  .object({
+    address: z.string(),
+    token: z.string(),
+    path: z.string(),
+    next_nonce: z.number().int().nonnegative(),
+    owner: z.string(),
+  })
+  .nullable();
 
 /** Reads what the heist checks from public NEAR and Base RPCs. No keys. */
 export type Transfer = { from: Address; to: Address; amount: bigint };
@@ -135,7 +144,7 @@ const traced = ["prove", "verify_foreign_transaction", "on_proved", "buy"];
 
 const successValue = (status: Status) =>
   typeof status === "object" && "SuccessValue" in status
-    ? Buffer.from(status.SuccessValue, "base64").toString()
+    ? bytesToString(base64Decode(status.SuccessValue))
     : null;
 
 async function history(ref: NearRef): Promise<NearHistory> {
@@ -181,7 +190,7 @@ async function history(ref: NearRef): Promise<NearHistory> {
             (typeof status === "object" && "SuccessReceiptId" in status),
           value,
           args: JSON.parse(
-            Buffer.from(action.FunctionCall.args, "base64").toString(),
+            bytesToString(base64Decode(action.FunctionCall.args)),
           ),
         },
       ];
@@ -216,8 +225,14 @@ export async function observe(e: HeistEvidence): Promise<Observation> {
     symbol,
     decimals,
   ] = await Promise.all([
-    view(e.contract, "get_lot", { id: e.lot.id }),
-    view(e.contract, "get_config", {}),
+    nearView(e.contract, "get_lot", { id: e.lot.id }).then((v) =>
+      lotFacts.parse(v),
+    ),
+    nearView<{ signer: string; finality: Finality }>(
+      e.contract,
+      "get_config",
+      {},
+    ),
     codeHash(e.contract),
     fullAccessKeys(e.contract),
     publicBase.getChainId(),

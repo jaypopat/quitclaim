@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { encodeFunctionData, erc20Abi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { config } from "@quitclaim/shared";
-import { parseEvidence, type HeistEvidence } from "./heist-evidence.ts";
-import { replayError, type Observation } from "./heist-observe.ts";
-import { verifyHeist, type HeistIO } from "./heist.ts";
+import { config } from "../config.ts";
+import { parseEvidence, type HeistEvidence } from "./evidence.ts";
+import { replayError, type Observation } from "./observe.ts";
+import { verifyHeist, type HeistIO } from "./verify.ts";
 
 const published = parseEvidence(
   await Bun.file(
-    new URL("../../../reports/heist.json", import.meta.url),
+    new URL("../../../../reports/heist.json", import.meta.url),
   ).json(),
 );
 const token = "0x0000000000000000000000000000000000000010";

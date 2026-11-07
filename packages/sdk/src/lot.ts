@@ -8,20 +8,20 @@ import {
   type Lot,
   type LotCalls,
 } from "@quitclaim/shared";
+import {
+  estimateTransferGas,
+  floorFees,
+  tokenBalance,
+} from "@quitclaim/shared/base.ts";
+import { MINT_DEPOSIT, YOCTO } from "@quitclaim/shared/calls.ts";
+import {
+  remaining,
+  titleSearch,
+  type TitleSearch,
+} from "@quitclaim/shared/sablier.ts";
 import * as base from "./base.ts";
 import * as sablier from "./sablier.ts";
-import { nearToYocto } from "near-api-js";
-import {
-  call,
-  getFinality,
-  getLot,
-  view,
-  YOCTO,
-  type CallOutcome,
-} from "./near.ts";
-
-/** Covers the lot's storage at mint; the contract refunds the excess, and all of it on rollback. */
-export const MINT_DEPOSIT = nearToYocto("0.05");
+import { call, getFinality, getLot, view, type CallOutcome } from "./near.ts";
 
 export type Provisioned = {
   id: number;
@@ -30,7 +30,7 @@ export type Provisioned = {
   streamId: bigint;
   streamTx: Hex;
   fundTx: Hex;
-  title: sablier.TitleSearch;
+  title: TitleSearch;
   mint: CallOutcome<LotCalls["mint_proven"]["result"]>;
 };
 
@@ -60,7 +60,7 @@ export async function provision(opts: {
     opts.total ?? 5n * 10n ** 6n,
     opts.durationSec ?? 3_600,
   );
-  const title = await sablier.titleSearch(stream.id, address, token);
+  const title = await titleSearch(stream.id, address, token);
   if (!title.clean)
     throw new Error(
       `stream ${stream.id} fails title search: ${JSON.stringify(title)}`,
@@ -109,16 +109,13 @@ export async function pullSource(lot: Lot) {
 
 /** The lot's whole position in token units: still in the stream plus already held at the address. */
 export async function position(lot: Lot) {
-  const held = await base.tokenBalance(
-    lot.token as Address,
-    lot.address as Address,
-  );
-  const locked = await sablier.remaining(BigInt(lot.source.id));
+  const held = await tokenBalance(lot.token as Address, lot.address as Address);
+  const locked = await remaining(BigInt(lot.source.id));
   return { held, locked, total: held + locked };
 }
 
 export async function floor(lot: Lot, nonce: number): Promise<Fees> {
-  return nextFees(lot.issued, nonce, await base.floorFees());
+  return nextFees(lot.issued, nonce, await floorFees());
 }
 
 export const mustLot = async (contract: string, id: number) => {
@@ -138,11 +135,11 @@ export async function requestTransfer(
   const lot = await mustLot(contract, id);
   const amount =
     override.amount ??
-    (await base.tokenBalance(lot.token as Address, lot.address as Address));
+    (await tokenBalance(lot.token as Address, lot.address as Address));
   const gas =
     override.gasLimit ??
     Number(
-      await base.estimateTransferGas(
+      await estimateTransferGas(
         lot.token as Address,
         lot.address as Address,
         to,
@@ -284,7 +281,3 @@ export async function leaseLeft(contract: string, id: number) {
   const budget = await view(contract, "lease_budget", { id });
   return BigInt(budget.allowed) - BigInt(budget.committed);
 }
-
-/** By this machine's clock; the contract decides by NEAR block time. */
-export const leaseRunOut = (lot: Lot) =>
-  !!lot.lease && Date.now() >= lot.lease.ends_at_ms;

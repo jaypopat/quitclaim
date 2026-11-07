@@ -5,9 +5,12 @@
  */
 import type { Address, Hex } from "viem";
 import { isBurn, type Issued, type Lot } from "@quitclaim/shared";
+import { baseClient } from "@quitclaim/shared/base.ts";
+import { YOCTO } from "@quitclaim/shared/calls.ts";
+import { leaseRunOut } from "@quitclaim/shared/control.ts";
 import * as base from "./base.ts";
-import { endLease, leaseRunOut, mustLot, rebump, rescue, seal } from "./lot.ts";
-import { call, getFinality, YOCTO, type CallOutcome } from "./near.ts";
+import { endLease, mustLot, rebump, rescue, seal } from "./lot.ts";
+import { call, getFinality, type CallOutcome } from "./near.ts";
 
 export type SettleStep =
   | { kind: "seal"; outcome: CallOutcome<unknown> }
@@ -104,7 +107,7 @@ const MAX_ROUNDS = 6;
 /** A burn priced below the current base fee can't mine; while Sealing anyone may reprice it. */
 async function stalledBurn(lot: Lot) {
   if (lot.state !== "Sealing") return null;
-  const baseFee = (await base.pub.getBlock()).baseFeePerGas ?? 0n;
+  const baseFee = (await baseClient.getBlock()).baseFeePerGas ?? 0n;
   const burns = lot.issued.filter(isBurn);
   const nonces = [...new Set(burns.map((b) => b.nonce))];
   for (const nonce of nonces) {
@@ -133,9 +136,9 @@ export async function settle(
   let reverted = false;
   let proven = false;
   const start = await mustLot(contract, id);
-  if (leaseRunOut(start) && start.state === "Active")
+  if (leaseRunOut(start, Date.now()) && start.state === "Active")
     steps.push({ kind: "seal", outcome: await seal(contract, prover, id) });
-  if (leaseRunOut(start) && start.state === "Clean")
+  if (leaseRunOut(start, Date.now()) && start.state === "Clean")
     steps.push({
       kind: "end_lease",
       outcome: await endLease(contract, prover, id),

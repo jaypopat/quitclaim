@@ -14,7 +14,7 @@ import {
   rescue,
   seal,
 } from "@quitclaim/sdk/lot.ts";
-import { call, YOCTO } from "@quitclaim/sdk/near.ts";
+import { call } from "@quitclaim/sdk/near.ts";
 import {
   alice,
   aliceEvm,
@@ -28,6 +28,8 @@ import {
   withdrawTo,
 } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
+import { baseTxUrl, tokenBalance } from "@quitclaim/shared/base.ts";
+import { YOCTO } from "@quitclaim/shared/calls.ts";
 
 export async function recovery(run: Run) {
   const p = await provision({
@@ -60,7 +62,7 @@ export async function recovery(run: Run) {
     pass: sent?.status === "sent" || sent?.status === "known",
     links: [
       ...low.links,
-      ...(lowHash ? [`pending ${base.txUrl(lowHash)}`] : []),
+      ...(lowHash ? [`pending ${baseTxUrl(lowHash)}`] : []),
     ],
   });
 
@@ -100,7 +102,7 @@ export async function recovery(run: Run) {
   });
 
   const u = await call(alice, contract, "unseal", { id }, { deposit: YOCTO });
-  const held = await base.tokenBalance(p.token, p.address);
+  const held = await tokenBalance(p.token, p.address);
   const bad = await requestTransfer(contract, alice, id, aliceEvm, {
     amount: held + 10n ** 30n,
     gasLimit: 80_000,

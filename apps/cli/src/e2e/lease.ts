@@ -17,7 +17,7 @@ import {
   seal,
   takeLease,
 } from "@quitclaim/sdk/lot.ts";
-import { call, getFinality, view, YOCTO } from "@quitclaim/sdk/near.ts";
+import { call, getFinality, view } from "@quitclaim/sdk/near.ts";
 import {
   alice,
   aliceEvm,
@@ -38,6 +38,8 @@ import {
   withdrawTo,
 } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
+import { YOCTO } from "@quitclaim/shared/calls.ts";
+import { tokenBalance } from "@quitclaim/shared/base.ts";
 
 export async function lease(run: Run) {
   const p = await provision({
@@ -145,11 +147,11 @@ export async function lease(run: Run) {
     links: [ownerRequest.url],
   });
 
-  const bobBefore = await base.tokenBalance(p.token, bobEvm);
+  const bobBefore = await tokenBalance(p.token, bobEvm);
   const budget = await leaseLeft(contract, id);
   const w0 = await withdrawTo(bob, id, bobEvm, { amount: budget });
   const s1 = await settle(contract, keeper, id);
-  const bobGot = (await base.tokenBalance(p.token, bobEvm)) - bobBefore;
+  const bobGot = (await tokenBalance(p.token, bobEvm)) - bobBefore;
   run.record({
     step: "bob withdraws within the budget",
     expect: "everything vested since the lease began; proven, still Active",
@@ -251,11 +253,11 @@ export async function lease(run: Run) {
     pass: bobHeist?.status === "nonce-too-low",
   });
 
-  const carolBefore = await base.tokenBalance(p.token, carolEvm);
+  const carolBefore = await tokenBalance(p.token, carolEvm);
   const carolBudget = await leaseLeft(contract, id);
   const w2 = await withdrawTo(carol, id, carolEvm, { amount: carolBudget });
   const s3 = await settle(contract, keeper, id);
-  const carolGot = (await base.tokenBalance(p.token, carolEvm)) - carolBefore;
+  const carolGot = (await tokenBalance(p.token, carolEvm)) - carolBefore;
   run.record({
     step: "carol withdraws within the budget",
     expect: "what has vested beyond bob's spending; proven",
@@ -308,10 +310,10 @@ export async function lease(run: Run) {
   });
 
   const u = await call(alice, contract, "unseal", { id }, { deposit: YOCTO });
-  const aliceTokensBefore = await base.tokenBalance(p.token, aliceEvm);
+  const aliceTokensBefore = await tokenBalance(p.token, aliceEvm);
   const w4 = await withdrawTo(alice, id, aliceEvm);
   const s5 = await settle(contract, keeper, id);
-  const aliceTokens = await base.tokenBalance(p.token, aliceEvm);
+  const aliceTokens = await tokenBalance(p.token, aliceEvm);
   run.record({
     step: "alice withdraws",
     expect: "control is back with the owner, with no lease budget",

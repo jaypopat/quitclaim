@@ -6,22 +6,18 @@ import {
 } from "near-api-js";
 import { ContractExecutionError } from "near-api-js/rpc-errors";
 import {
-  config,
   nearProvider,
   nearView,
   type LotCalls,
   type LotViews,
 } from "@quitclaim/shared";
+import { CALL_TGAS } from "@quitclaim/shared/calls.ts";
+import { nearTxUrl } from "@quitclaim/shared/near.ts";
 import { env } from "./env.ts";
 
 type Sent = { tx: string; url: string };
 export type CallOutcome<T> =
   (Sent & { ok: true; value: T }) | (Sent & { ok: false; error: string });
-
-/** The deposit MPC requests and NEP-171 transfers require. */
-export const YOCTO = 1n;
-
-export const nearTxUrl = (tx: string) => `${config.near.explorer}/txns/${tx}`;
 
 async function keyFor(accountId: string): Promise<KeyPairString> {
   const file = Bun.file(`${env.credentialsDir}/${accountId}.json`);
@@ -45,7 +41,7 @@ export async function call<M extends keyof LotCalls>(
   contractId: string,
   method: M,
   args: LotCalls[M]["args"],
-  { deposit = 0n, tgas = 300 }: { deposit?: bigint; tgas?: number } = {},
+  { deposit = 0n, tgas = CALL_TGAS }: { deposit?: bigint; tgas?: number } = {},
 ): Promise<CallOutcome<LotCalls[M]["result"]>> {
   const acct = await account(signer);
   try {
@@ -81,15 +77,4 @@ export const getLot = (contractId: string, id: number) =>
 
 export async function getFinality(contractId: string) {
   return (await view(contractId, "get_config", {})).finality;
-}
-
-export async function codeHash(accountId: string): Promise<string> {
-  return (await nearProvider.viewAccount({ accountId })).code_hash;
-}
-
-export async function fullAccessKeys(accountId: string): Promise<string[]> {
-  const { keys } = await nearProvider.viewAccessKeyList({ accountId });
-  return keys
-    .filter((k) => k.access_key.permission === "FullAccess")
-    .map((k) => k.public_key);
 }
