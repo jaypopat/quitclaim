@@ -1,8 +1,139 @@
-:root {
-  color-scheme: light dark;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --color-dither-ink: var(--dither-ink);
+  --color-dither-paper: var(--dither-paper);
+  --color-dither-blue: var(--dither-color-blue);
+  --color-dither-purple: var(--dither-color-purple);
+  --color-dither-green: var(--dither-color-green);
+  --color-dither-pink: var(--dither-color-pink);
+  --color-dither-orange: var(--dither-color-orange);
+  --color-dither-red: var(--dither-color-red);
+  --color-dither-grey: var(--dither-color-grey);
 }
-body {
-  margin: 0;
-  padding: 16px;
+
+/* Quitclaim v5 palette: warm paper and ink, one signal orange. */
+:root {
+  --radius: 2px;
+  --background: #f3f2ee;
+  --foreground: #111110;
+  --card: #fbfaf7;
+  --card-foreground: #111110;
+  --popover: #fbfaf7;
+  --popover-foreground: #111110;
+  --primary: #ff4d1a;
+  --primary-foreground: #ffffff;
+  --secondary: #e9e8e2;
+  --secondary-foreground: #111110;
+  --muted: #e9e8e2;
+  --muted-foreground: #6b6a64;
+  --accent: #e9e8e2;
+  --accent-foreground: #111110;
+  --destructive: #c7361a;
+  --border: #dddcd5;
+  --input: #dddcd5;
+  --ring: #ff4d1a;
+  --chart-1: #ff4d1a;
+  --chart-2: #111110;
+  --chart-3: #6b6a64;
+  --chart-4: #dddcd5;
+  --chart-5: #e9e8e2;
+}
+
+.dark {
+  --background: #0d0d0c;
+  --foreground: #ecebe6;
+  --card: #141413;
+  --card-foreground: #ecebe6;
+  --popover: #141413;
+  --popover-foreground: #ecebe6;
+  --primary: #ff5a2a;
+  --primary-foreground: #ffffff;
+  --secondary: #1b1b19;
+  --secondary-foreground: #ecebe6;
+  --muted: #1b1b19;
+  --muted-foreground: #97968f;
+  --accent: #1b1b19;
+  --accent-foreground: #ecebe6;
+  --destructive: #e8582f;
+  --border: #2a2a27;
+  --input: #2a2a27;
+  --ring: #ff5a2a;
+  --chart-1: #ff5a2a;
+  --chart-2: #ecebe6;
+  --chart-3: #97968f;
+  --chart-4: #2a2a27;
+  --chart-5: #1b1b19;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  :root {
+    --dither-ink: var(--primary);
+    --dither-paper: var(--background);
+    --dither-cell: 3px;
+    --dither-color-blue: oklch(0.56 0.18 248);
+    --dither-color-purple: oklch(0.53 0.22 302);
+    --dither-color-green: oklch(0.58 0.15 152);
+    --dither-color-pink: oklch(0.58 0.21 355);
+    --dither-color-orange: oklch(0.64 0.17 52);
+    --dither-color-red: oklch(0.55 0.21 27);
+    --dither-color-grey: oklch(0.55 0 0);
+    --dither-bloom: 0.6;
+  }
+  .dark {
+    --dither-ink: var(--primary);
+    --dither-paper: var(--background);
+    --dither-cell: 3px;
+    --dither-color-blue: oklch(0.72 0.14 240);
+    --dither-color-purple: oklch(0.7 0.18 304);
+    --dither-color-green: oklch(0.78 0.17 152);
+    --dither-color-pink: oklch(0.74 0.17 354);
+    --dither-color-orange: oklch(0.79 0.15 62);
+    --dither-color-red: oklch(0.68 0.2 25);
+    --dither-color-grey: oklch(0.66 0 0);
+    --dither-bloom: 1;
+  }
 }

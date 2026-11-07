@@ -14,6 +14,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "paths": { "@/*": ["./apps/web/src/*"] },
 
     // Best practices
     "strict": true,

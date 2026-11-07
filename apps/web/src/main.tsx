@@ -1,15 +1,20 @@
 import { createRoot } from "react-dom/client";
-import { config } from "@quitclaim/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { ThemeProvider } from "next-themes";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { router } from "./router.tsx";
 
-function App() {
-  return (
-    <main>
-      <h1>Quitclaim</h1>
-      <p>
-        Lots on chain {config.evm.chainId}, signed by {config.near.mpcSigner}.
-      </p>
-    </main>
-  );
-}
+const queryClient = new QueryClient();
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ThemeProvider>,
+);
