@@ -227,12 +227,16 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
     for (method, args) in [
         (
             "on_derived",
-            json!({"id":1,"recipient":LOT_ADDRESS,"log":creation_log(),"storage":"0"}),
+            json!({"id":1,"recipient":LOT_ADDRESS,"verify_args":"","storage":"0"}),
         ),
         ("on_mint_verified", json!({"id":1,"storage":"0"})),
         ("on_signed", json!({"id":1,"seq":0})),
         ("on_proved", json!({"id":1,"nonce":0})),
         ("on_withdraw", json!({"account":c.alice,"amount":"999"})),
+        (
+            "new",
+            json!({"signer":c.alice,"lockup":LOCKUP,"finality":"Latest"}),
+        ),
     ] {
         let error = c.call(&c.alice, &c.lot, method, args, 0).await.unwrap_err();
         assert!(error.to_string().contains("private"), "{method}: {error}");
@@ -241,6 +245,44 @@ async fn failed_mint_refunds_storage_and_callbacks_reject_external_calls() -> Re
     assert_eq!(lot["state"], "Active");
     assert_eq!(lot["owner"], c.alice.as_str());
     assert_eq!(lot["minter"], c.minter.as_str());
+    Ok(())
+}
+
+/// A wallet's function-call key can't attach a deposit, so every call that hands over control
+/// or reprices the lot needs exactly 1 yoctoNEAR, as `nft_transfer` does. Without that, a leaked
+/// login key could list the title at 1 yocto and buy it.
+#[tokio::test]
+async fn control_moves_only_with_exactly_one_yocto() -> Result {
+    let c = TestChain::start().await?;
+    c.mint("keyed").await?;
+    let fees = json!({"max_fee":"1000000","max_prio":"1000000"});
+    let error = c
+        .call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 2)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("attach 1 yoctoNEAR"), "{error}");
+    c.call(&c.alice, &c.lot, "seal", json!({"id":0,"fees":fees}), 1)
+        .await?;
+    for (method, args) in [
+        ("list", json!({"id":0,"price":"1"})),
+        ("delist", json!({"id":0})),
+        (
+            "offer_lease",
+            json!({"id":0,"price":"1","ends_at_ms":u64::MAX}),
+        ),
+        ("surrender_lease", json!({"id":0})),
+        ("unseal", json!({"id":0})),
+    ] {
+        let error = c.call(&c.alice, &c.lot, method, args, 0).await.unwrap_err();
+        assert!(
+            error.to_string().contains("exactly 1 yoctoNEAR"),
+            "{method}: {error}"
+        );
+    }
+    assert_eq!(
+        c.view("get_lot", json!({"id":0})).await?["listing"],
+        Value::Null
+    );
     Ok(())
 }
 
@@ -261,7 +303,7 @@ async fn failed_payout_restores_credit_and_failed_signing_keeps_the_issued_nonce
         &c.lot,
         "list",
         json!({"id":0,"price":(5 * ONE_NEAR).to_string()}),
-        0,
+        1,
     )
     .await?;
     c.call(
@@ -384,7 +426,7 @@ async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Resul
         &c.lot,
         "offer_lease",
         json!({"id":0,"price":ONE_NEAR.to_string(),"ends_at_ms":ends_at_ms}),
-        0,
+        1,
     )
     .await?;
     c.call(
@@ -472,7 +514,7 @@ async fn an_expired_lease_is_sealed_and_proven_before_control_returns() -> Resul
         c.view("nft_token", json!({"token_id":"0-lease"})).await?,
         Value::Null
     );
-    c.call(&c.alice, &c.lot, "unseal", json!({"id":0}), 0)
+    c.call(&c.alice, &c.lot, "unseal", json!({"id":0}), 1)
         .await?;
     assert_eq!(
         c.view("get_lot", json!({"id":0})).await?["state"],

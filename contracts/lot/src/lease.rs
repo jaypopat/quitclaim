@@ -5,7 +5,7 @@
 
 use near_contract_standards::non_fungible_token::events::{NftBurn, NftMint};
 use near_sdk::json_types::U128;
-use near_sdk::{AccountId, env, near, require};
+use near_sdk::{AccountId, assert_one_yocto, env, near, require};
 
 use crate::{
     Contract, ContractExt, Item, Kind, Lease, LeaseBudget, LeaseOffer, Lot, LotId, LotState,
@@ -129,7 +129,9 @@ impl Contract {
 #[near]
 impl Contract {
     /// Owner offers a Clean lot for lease until `ends_at_ms`. Bound to the version, like a listing.
+    #[payable]
     pub fn offer_lease(&mut self, id: LotId, price: U128, ends_at_ms: u64) {
+        assert_one_yocto();
         let lot = self.load_mut(id);
         require!(lot.lease.is_none(), "lot is already leased");
         require!(
@@ -201,7 +203,9 @@ impl Contract {
     }
 
     /// The lease holder hands control back early. Only while Clean, like expiry.
+    #[payable]
     pub fn surrender_lease(&mut self, id: LotId) {
+        assert_one_yocto();
         let lot = self.load_mut(id);
         require!(
             env::predecessor_account_id() == *Self::holder(lot, Item::Lease),

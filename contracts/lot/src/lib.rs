@@ -9,14 +9,15 @@ mod types;
 #[cfg(test)]
 mod tests;
 
+use alloy_primitives::B256;
 use near_contract_standards::non_fungible_token::events::{NftMint, NftTransfer};
 use near_mpc_contract_interface::types::{PublicKey, SignatureResponse};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::serde_json::{self, Value};
 use near_sdk::store::{IterableMap, LookupMap, LookupSet};
 use near_sdk::{
-    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, env, log,
-    near, require,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
+    assert_one_yocto, env, log, near, require,
 };
 
 pub use source::CreationLog;
@@ -45,7 +46,7 @@ pub struct Contract {
 
 fn require_deposit() {
     require!(
-        env::attached_deposit() >= mpc::REQUEST_DEPOSIT,
+        env::attached_deposit() == mpc::REQUEST_DEPOSIT,
         "attach 1 yoctoNEAR (the MPC request deposit)"
     );
 }
@@ -152,6 +153,7 @@ impl Contract {
 #[near]
 impl Contract {
     #[init]
+    #[private]
     pub fn new(signer: AccountId, lockup: String, finality: Finality) -> Self {
         Self {
             signer,
@@ -195,7 +197,8 @@ impl Contract {
         let evm_log = log.to_evm_log().unwrap_or_else(|e| env::panic_str(e));
         let stream =
             source::decode(&evm_log, &self.lockup.into()).unwrap_or_else(|e| env::panic_str(e));
-        source::verify_request(&evm_log, self.finality).unwrap_or_else(|e| env::panic_str(e));
+        let request =
+            source::verify_request(&evm_log, self.finality).unwrap_or_else(|e| env::panic_str(e));
         let recipient = format!("{:#x}", stream.recipient);
         let before = env::storage_usage();
         let minter = env::predecessor_account_id();
@@ -258,7 +261,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(DERIVED_CALLBACK_GAS)
-                    .on_derived(id, recipient, log, storage),
+                    .on_derived(id, recipient, mpc::verify_args(request).into(), storage),
             )
     }
 
@@ -267,7 +270,7 @@ impl Contract {
         &mut self,
         id: LotId,
         recipient: String,
-        log: CreationLog,
+        verify_args: Base64VecU8,
         storage: NearToken,
         #[callback_result] key: Result<String, PromiseError>,
     ) -> PromiseOrValue<Option<MintedLot>> {
@@ -286,19 +289,12 @@ impl Contract {
                 storage,
             ));
         }
-        let args = match log
-            .to_evm_log()
-            .and_then(|l| source::verify_request(&l, self.finality))
-        {
-            Ok(request) => mpc::verify_args(request),
-            Err(e) => return PromiseOrValue::Value(self.roll_back(id, e, storage)),
-        };
         self.lot_mut(id).address = Some(address);
         PromiseOrValue::Promise(
             Promise::new(self.signer.clone())
                 .function_call(
                     mpc::VERIFY_FOREIGN_TRANSACTION.to_string(),
-                    args,
+                    verify_args.0,
                     mpc::REQUEST_DEPOSIT,
                     mpc::REQUEST_GAS,
                 )
@@ -423,7 +419,9 @@ impl Contract {
 
     /// The controller returns the lot to Active. Bumping the version cancels anything bound to the old one.
     /// Refused once the lease has run out, so expiry always reaches Clean.
+    #[payable]
     pub fn unseal(&mut self, id: LotId) {
+        assert_one_yocto();
         let lot = self.load_mut(id);
         Self::require_controller(lot);
         require!(!Self::lease_run_out(lot), "the lease has run out");
@@ -500,10 +498,9 @@ impl Contract {
             .position(|i| i.seq == seq)
             .unwrap_or_else(|| env::panic_str("no such issued tx"));
         let word = |h: &str| -> [u8; 32] {
-            hex::decode(h.trim_start_matches("0x"))
-                .ok()
-                .and_then(|b| b.try_into().ok())
-                .unwrap_or_else(|| env::panic_str("r and s must be 32-byte hex"))
+            h.parse::<B256>()
+                .unwrap_or_else(|_| env::panic_str("r and s must be 32-byte hex"))
+                .0
         };
         let tx = evm::build(&lot.issued[pos], &lot_addr, &token);
         let signed = evm::assemble(&tx, word(&r), word(&s), v, &lot_addr)
@@ -529,10 +526,10 @@ impl Contract {
             .tx_hash
             .clone()
             .unwrap_or_else(|| env::panic_str("issued tx has no recorded signature"));
-        let tx: [u8; 32] = hex::decode(hash.trim_start_matches("0x"))
-            .ok()
-            .and_then(|b| b.try_into().ok())
-            .expect("recorded hashes are 32-byte hex");
+        let tx = hash
+            .parse::<B256>()
+            .expect("recorded hashes are 32-byte hex")
+            .0;
         let nonce = issued.nonce;
         Promise::new(self.signer.clone())
             .function_call(

@@ -3,7 +3,7 @@
 //! recipient, non-cancelable, non-transferable, token), and asks MPC to attest that exact log mined
 //! at the contract's finality. The request and its expected payload hash come from `near-mpc-sdk`.
 
-use alloy_primitives::{B256, U256};
+use alloy_primitives::{B256, U256, hex};
 use alloy_sol_types::{SolEvent, sol};
 use near_mpc_contract_interface::types::{
     DomainId, EvmLog, EvmTxId, VerifyForeignTransactionRequestArgs,
@@ -49,7 +49,7 @@ sol! {
 /// The log as `mint_proven` takes it: MPC's `EvmLog` shape, with an ABI schema of our own (MPC's
 /// `abi` feature only builds inside MPC's workspace). Converted into `EvmLog`, whose hex types
 /// reject malformed hashes and addresses.
-#[near(serializers = [json, borsh])]
+#[near(serializers = [json])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CreationLog {
     pub removed: bool,

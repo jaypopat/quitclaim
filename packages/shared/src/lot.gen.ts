@@ -339,21 +339,21 @@ export interface LotViews {
 
 export interface LotCalls {
   buy: { args: BuyArgs; result: BuyResult; payable: true };
-  delist: { args: DelistArgs; result: DelistResult; payable: false };
+  delist: { args: DelistArgs; result: DelistResult; payable: true };
   end_lease: { args: EndLeaseArgs; result: EndLeaseResult; payable: false };
-  list: { args: ListArgs; result: ListResult; payable: false };
+  list: { args: ListArgs; result: ListResult; payable: true };
   mint_proven: { args: MintProvenArgs; result: MintProvenResult; payable: true };
   nft_transfer: { args: NftTransferArgs; result: NftTransferResult; payable: true };
   nft_transfer_call: { args: NftTransferCallArgs; result: NftTransferCallResult; payable: true };
-  offer_lease: { args: OfferLeaseArgs; result: OfferLeaseResult; payable: false };
+  offer_lease: { args: OfferLeaseArgs; result: OfferLeaseResult; payable: true };
   prove: { args: ProveArgs; result: ProveResult; payable: true };
   rebump: { args: RebumpArgs; result: RebumpResult; payable: true };
   register_signature: { args: RegisterSignatureArgs; result: RegisterSignatureResult; payable: false };
   request_transfer: { args: RequestTransferArgs; result: RequestTransferResult; payable: true };
   rescue: { args: RescueArgs; result: RescueResult; payable: true };
   seal: { args: SealArgs; result: SealResult; payable: true };
-  surrender_lease: { args: SurrenderLeaseArgs; result: SurrenderLeaseResult; payable: false };
+  surrender_lease: { args: SurrenderLeaseArgs; result: SurrenderLeaseResult; payable: true };
   take_lease: { args: TakeLeaseArgs; result: TakeLeaseResult; payable: true };
-  unseal: { args: UnsealArgs; result: UnsealResult; payable: false };
+  unseal: { args: UnsealArgs; result: UnsealResult; payable: true };
   withdraw_proceeds: { args: WithdrawProceedsArgs; result: WithdrawProceedsResult; payable: false };
 }
