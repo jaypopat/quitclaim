@@ -65,7 +65,7 @@ export const BAYER_8: ThresholdMap = fromRanks(8, bayerRanks(8), 64);
 export const BLUE_NOISE_64: ThresholdMap = fromRanks(
   64,
   decodeBase64(BLUE_NOISE_64_BASE64),
-  256,
+  256
 );
 
 export const getThresholdMap = (matrix: DitherMatrix): ThresholdMap => {
@@ -103,5 +103,5 @@ export const isInked = (
   matrix: DitherMatrix,
   x: number,
   y: number,
-  tone: number,
+  tone: number
 ) => tone > thresholdAt(matrix, x, y);

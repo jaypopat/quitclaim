@@ -8,7 +8,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/sdk/src/sablier.ts`).
 - `packages/shared` holds chain config, lot-address derivation and the contract ABI types. It is browser-safe.
 - `packages/sdk` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/sdk/base.ts`.
-- `apps/web` is the frontend.
+- `apps/web` is the frontend. `src/components/ui`, `src/components/dithercn`, `src/lib/dither` and `src/lib/utils.ts` are vendored byte-for-byte from the shadcn and dithercn registries: update them with `bunx shadcn@latest add <name> --overwrite`, never edit them (wrap instead), and keep them out of `bun fmt`.
 - `apps/keeper` is the keeper loop. It only finds pending lots and calls `settle`.
 - `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out.
 - Dependencies point one way: apps → `packages/sdk` → `packages/shared`. Apps never import each other.
@@ -16,7 +16,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 ## Commands
 
-- `.githooks/pre-commit` runs `fmt:check` and `bun check` (set up by `bun install` via `prepare`). Fix with `bun run fmt`.
+- `.githooks/pre-commit` runs `fmt:check` and `bun check -b` (set up by `bun install` via `prepare`). `-b` follows the reference to `apps/web`, its own TS project. Fix with `bun run fmt`.
 - `bun run verify` runs everything: ABI check, typecheck, TS tests, lot tests, Sandbox tests. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.

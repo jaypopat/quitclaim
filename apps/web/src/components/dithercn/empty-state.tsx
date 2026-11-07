@@ -85,10 +85,9 @@ const box: ObjectField = (x, y) => {
     return [face(0.3, y, CY - 1, depth + 13), 3];
   }
   const opening = [top, right, front, left];
-  const inner = opening.map(([px, py]): Point => [
-    CX + (px - CX) * 0.8,
-    CY - 1 + (py - (CY - 1)) * 0.74,
-  ]);
+  const inner = opening.map(
+    ([px, py]): Point => [CX + (px - CX) * 0.8, CY - 1 + (py - (CY - 1)) * 0.74]
+  );
   if (inPolygon(x, y, opening) && !inPolygon(x, y, inner)) {
     // The lip of the opening catches the light.
     return [0.9, 5];
@@ -140,7 +139,7 @@ const inRect = (
   x: number,
   y: number,
   [left, top]: Point,
-  [width, height]: Point,
+  [width, height]: Point
 ) => x >= left && x < left + width && y >= top && y < top + height;
 
 /** A folder with a sheet of paper peeking out of it. */
@@ -205,7 +204,7 @@ const OBJECTS = {
 const backdrop = (
   illustration: EmptyStateIllustration,
   x: number,
-  y: number,
+  y: number
 ) => {
   const halo = Math.hypot((x + 0.5 - CX) / 54, (y + 0.5 - CY) / 34);
   const glow = 0.12 * Math.max(0, 1 - halo) ** 2;
@@ -227,7 +226,7 @@ const sceneCache = new Map<string, ScenePaths>();
 
 const scenePaths = (
   illustration: EmptyStateIllustration,
-  matrix: DitherMatrix,
+  matrix: DitherMatrix
 ): ScenePaths => {
   const key = `${illustration}:${matrix}`;
   const cached = sceneCache.get(key);
@@ -236,13 +235,11 @@ const scenePaths = (
   }
   const field = OBJECTS[illustration];
   const tones = Array.from({ length: ROWS }, (_, y) =>
-    Array.from({ length: COLS }, (_unused, x) => field(x, y)),
+    Array.from({ length: COLS }, (_unused, x) => field(x, y))
   );
   const near = (x: number, y: number) =>
     [-2, -1, 0, 1, 2].some((oy) =>
-      [-2, -1, 0, 1, 2].some(
-        (ox) => (tones[y + oy]?.[x + ox] ?? null) !== null,
-      ),
+      [-2, -1, 0, 1, 2].some((ox) => (tones[y + oy]?.[x + ox] ?? null) !== null)
     );
   // A cell next to a lower-numbered part is left clear, so parts are split
   // by a one-cell seam, as in pixel art.
@@ -365,7 +362,7 @@ export const EmptyState = ({
     data-illustration={illustration}
     className={cn(
       "flex flex-col items-center px-6 py-10 text-center",
-      className,
+      className
     )}
     {...props}
   >

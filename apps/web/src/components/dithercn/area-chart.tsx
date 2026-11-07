@@ -97,11 +97,11 @@ const Swatch = ({ color }: { color: DitherColor }) => (
 /** Each series' top and bottom edge at every datum, in data units. */
 const stackValues = (
   values: readonly (readonly number[])[],
-  stack: AreaStack,
+  stack: AreaStack
 ) => {
   const count = values[0]?.length ?? 0;
   const totals = Array.from({ length: count }, (_, index) =>
-    values.reduce((sum, row) => sum + Math.max(0, row[index] ?? 0), 0),
+    values.reduce((sum, row) => sum + Math.max(0, row[index] ?? 0), 0)
   );
   const running = Array.from({ length: count }, () => 0);
   return values.map((row) =>
@@ -115,7 +115,7 @@ const stackValues = (
       const low = running[index] ?? 0;
       running[index] = low + scaled;
       return { high: low + scaled, low };
-    }),
+    })
   );
 };
 
@@ -152,7 +152,7 @@ export const AreaChart = <T,>({
   const formatValue = useMemo(() => toFormatter(format), [format]);
   const { edges, raw, scale } = useMemo(() => {
     const values = series.map((entry) =>
-      data.map((datum) => readValue(datum, entry.value)),
+      data.map((datum) => readValue(datum, entry.value))
     );
     const stacked = stackValues(values, stack);
     return {
@@ -281,7 +281,7 @@ export const AreaChart = <T,>({
                             shapeRendering="crispEdges"
                           />
                         </mask>
-                      ) : null,
+                      ) : null
                     )}
                   </defs>
                   {DENSITY_BANDS.map((band, bandIndex) => (

@@ -140,7 +140,7 @@ const uniformSpecs = (uniforms: DitherUniforms): UniformSpec[] =>
       if (!IDENTIFIER.test(name) || name.startsWith("u_")) {
         // Reserved or invalid names would break the shader; say which.
         console.error(
-          `[dither-core] uniform "${name}" skipped: names must be GLSL identifiers and not start with "u_"`,
+          `[dither-core] uniform "${name}" skipped: names must be GLSL identifiers and not start with "u_"`
         );
         return [];
       }
@@ -165,7 +165,7 @@ const FIELD_COLOR = `
 const fragmentShader = (
   field: string,
   colorField: string | undefined,
-  specs: readonly UniformSpec[],
+  specs: readonly UniformSpec[]
 ) => `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -233,7 +233,7 @@ const compile = (gl: WebGLRenderingContext, type: GLenum, source: string) => {
       console.error("[dither-core] shader failed to compile", log);
       if (log.includes("already has a body")) {
         console.error(
-          "[dither-core] a function is defined twice. `field` and `colorField` compile into one shader: give helpers different names, or define a shared helper once, in `field`, and call it from both.",
+          "[dither-core] a function is defined twice. `field` and `colorField` compile into one shader: give helpers different names, or define a shared helper once, in `field`, and call it from both."
         );
       }
     }
@@ -263,13 +263,13 @@ const createRenderer = (
     field: string;
     colorField: string | undefined;
     specs: readonly UniformSpec[];
-  },
+  }
 ): Renderer | null => {
   const vertex = compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
   const fragment = compile(
     gl,
     gl.FRAGMENT_SHADER,
-    fragmentShader(field, colorField, specs),
+    fragmentShader(field, colorField, specs)
   );
   const program = gl.createProgram();
   if (!vertex || !fragment || !program) {
@@ -292,7 +292,7 @@ const createRenderer = (
   gl.bufferData(
     gl.ARRAY_BUFFER,
     new Float32Array([-1, -1, 3, -1, -1, 3]),
-    gl.STATIC_DRAW,
+    gl.STATIC_DRAW
   );
   const position = gl.getAttribLocation(program, "a_position");
   gl.enableVertexAttribArray(position);
@@ -359,7 +359,7 @@ const createRenderer = (
         0,
         gl.LUMINANCE,
         gl.UNSIGNED_BYTE,
-        bytes,
+        bytes
       );
       gl.uniform1f(uMatrixSize, map.size);
       gl.uniform1f(uRankStep, rankStep);
@@ -369,7 +369,7 @@ const createRenderer = (
       for (const [index, color] of colors.entries()) {
         bytes.set(
           color.map((channel) => Math.round(channel * 255)),
-          index * 4,
+          index * 4
         );
       }
       gl.activeTexture(gl.TEXTURE1);
@@ -383,7 +383,7 @@ const createRenderer = (
         0,
         gl.RGBA,
         gl.UNSIGNED_BYTE,
-        bytes,
+        bytes
       );
       gl.uniform1f(uPaletteSize, colors.length);
     },
@@ -486,7 +486,7 @@ const useContextSlot = (ref: RefObject<Element | null>): boolean => {
           releaseContext(slot);
         }
       },
-      { rootMargin: "200px" },
+      { rootMargin: "200px" }
     );
     // Coming on screen can take a context from one that is only nearby, and
     // leaving the screen hands it to an on-screen shader that is waiting.
@@ -680,7 +680,7 @@ export const DitherShader = ({
       }
       drawRef.current?.();
     },
-    { enabled: animate, fps, stillTime, target: rootRef },
+    { enabled: animate, fps, stillTime, target: rootRef }
   );
 
   // Context, program, size and theme. A fresh canvas per context, so a
@@ -786,7 +786,7 @@ export const DitherShader = ({
     const root = rootRef.current;
     if (root) {
       rendererRef.current?.setPalette(
-        paletteKey.split("|").map((color) => resolveColor(color, root)),
+        paletteKey.split("|").map((color) => resolveColor(color, root))
       );
     }
   }, [paletteKey]);
@@ -807,7 +807,7 @@ export const DitherShader = ({
       data-state={state}
       className={cn(
         "group/dither pointer-events-none relative overflow-hidden",
-        className,
+        className
       )}
       {...props}
     >

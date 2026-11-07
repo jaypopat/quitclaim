@@ -92,11 +92,11 @@ const layout = (
   formatter: Intl.NumberFormat,
   target: number,
   shown: number,
-  fill: number | null,
+  fill: number | null
 ): Glyph[] => {
   const chars = [...formatter.format(target)];
   const shownDigits = [...formatter.format(shown)].filter((char) =>
-    DIGIT.test(char),
+    DIGIT.test(char)
   );
   const digitCount = chars.filter((char) => DIGIT.test(char)).length;
   let place = digitCount;
@@ -223,7 +223,7 @@ const RollSlot = ({
     // Snap float drift (9.9996) to the row it really shows.
     const at = modulo(
       Math.abs(row - Math.round(row)) < 0.01 ? Math.round(row) : row,
-      10,
+      10
     );
     const { start, end } = rollRows({ at, direction, spin, value });
     if (Math.abs(end - start) < 0.01) {
@@ -371,7 +371,7 @@ const ResolveSlot = ({
               .filter((layer) => !layer.leaving)
               .map((layer) => ({ ...layer, leaving: true })),
             { digit, id, leaving: false },
-          ],
+          ]
     );
   }
 
@@ -469,7 +469,7 @@ const useShownValue = ({
   // Digits as one integer ("$4.12K" → 412), so a spin follows what is shown,
   // not the raw value behind compact notation or decimals.
   const digitsRef = useRef((input: number) =>
-    Number(formatter.format(input).replaceAll(/\D/gu, "") || 0),
+    Number(formatter.format(input).replaceAll(/\D/gu, "") || 0)
   );
   useEffect(() => {
     digitsRef.current = (input: number) =>
@@ -513,11 +513,11 @@ const useShownValue = ({
         ? previous
         : {
             delta: Math.abs(
-              digitsRef.current(value) - digitsRef.current(previous.value),
+              digitsRef.current(value) - digitsRef.current(previous.value)
             ),
             direction: value > previous.value ? 1 : -1,
             value,
-          },
+          }
     );
   }, [armed, reducedMotion, started, value]);
 
@@ -606,7 +606,7 @@ export const DitherNumber = ({
     formatter,
     value,
     shown.value,
-    effect === "roll" ? 0 : null,
+    effect === "roll" ? 0 : null
   );
   const resolvedDuration = duration ?? (effect === "roll" ? 900 : 560);
   const Slot = effect === "roll" ? RollSlot : ResolveSlot;
@@ -636,7 +636,7 @@ export const DitherNumber = ({
         // After the size preset: tailwind-merge drops a line height that
         // comes before a font size.
         "leading-[1.1]",
-        className,
+        className
       )}
       style={rootStyle}
     >
@@ -673,7 +673,7 @@ export const DitherNumber = ({
                   // dithered fade sits mostly outside the glyphs.
                   effect === "roll"
                     ? "inset-x-0 -inset-y-(--number-pad)"
-                    : "inset-0",
+                    : "inset-0"
                 )}
                 style={effect === "roll" ? (mask ?? undefined) : undefined}
               >
@@ -706,7 +706,7 @@ export const DitherNumber = ({
               <span key={index} className={STATIC_CLASS}>
                 {run}
               </span>
-            ),
+            )
           )}
         {affix(suffix, "suffix")}
       </span>

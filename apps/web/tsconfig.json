@@ -1,0 +1,17 @@
+{
+  // The web app compiles on the shadcn/dithercn registry baseline (strict, no
+  // noUncheckedIndexedAccess) so vendored registry code builds unmodified.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "../../node_modules/.cache/tsc-web",
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": []
+}

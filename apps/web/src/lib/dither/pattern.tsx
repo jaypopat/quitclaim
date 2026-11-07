@@ -58,7 +58,7 @@ export interface DitherMaskOptions {
  */
 export const ditherMask = (
   level: number,
-  { matrix = "bayer4", cell }: DitherMaskOptions = {},
+  { matrix = "bayer4", cell }: DitherMaskOptions = {}
 ) => {
   const { size } = getThresholdMap(matrix);
   const dimensions =
@@ -87,7 +87,7 @@ export const ditherMaskStyle = (
   {
     matrix = "bayer4",
     cell = "var(--dither-cell)",
-  }: DitherMaskStyleOptions = {},
+  }: DitherMaskStyleOptions = {}
 ): CSSProperties => {
   const { size } = getThresholdMap(matrix);
   const image = ditherMask(level, { matrix });

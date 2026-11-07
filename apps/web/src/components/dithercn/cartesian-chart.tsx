@@ -46,7 +46,7 @@ export type Accessor<T, V> = KeyOfType<T, V> | ((datum: T) => V);
 /** A category label, as text. */
 export const readLabel = <T,>(
   datum: T,
-  accessor: Accessor<T, string | number>,
+  accessor: Accessor<T, string | number>
 ): string =>
   String(typeof accessor === "function" ? accessor(datum) : datum[accessor]);
 
@@ -62,7 +62,8 @@ export const readValue = <T,>(datum: T, accessor: Accessor<T, number>) => {
  * Components) or a function.
  */
 export type ValueFormat =
-  Intl.NumberFormatOptions | ((value: number) => string);
+  | Intl.NumberFormatOptions
+  | ((value: number) => string);
 
 const COMPACT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 1,
@@ -71,7 +72,7 @@ const COMPACT: Intl.NumberFormatOptions = {
 
 /** A formatter for a `ValueFormat`. Default compact, as in 1.2K. */
 export const toFormatter = (
-  format: ValueFormat = COMPACT,
+  format: ValueFormat = COMPACT
 ): ((value: number) => string) => {
   if (typeof format === "function") {
     return format;
@@ -99,7 +100,7 @@ export type NonEmpty<T> = readonly [T, ...T[]];
 export const seriesColor = (
   color: DitherColor | undefined,
   index: number,
-  colors: readonly DitherColor[] = [],
+  colors: readonly DitherColor[] = []
 ): DitherColor =>
   color ??
   colors[index] ??
@@ -122,7 +123,7 @@ export interface ChartSize {
  */
 export const useChartSize = (
   ref: { current: HTMLElement | null },
-  cell?: number,
+  cell?: number
 ): ChartSize | null => {
   const [measured, setMeasured] = useState<{
     width: number;
@@ -176,7 +177,7 @@ export interface Scale {
  */
 export const niceScale = (
   values: readonly number[],
-  { zero = true, count = 4 }: { zero?: boolean; count?: number } = {},
+  { zero = true, count = 4 }: { zero?: boolean; count?: number } = {}
 ): Scale => {
   const finite = values.filter((value) => Number.isFinite(value));
   const floor = zero ? [0] : [];
@@ -275,7 +276,7 @@ export const monotonePath = (points: readonly Point[]) => {
  */
 export const useReveal = (
   target: { current: Element | null },
-  enabled = true,
+  enabled = true
 ) => {
   const [progress, setProgress] = useState(enabled ? 0 : 1);
   const duration = (MOTION.slow + MOTION.base) / 1000;
@@ -285,7 +286,7 @@ export const useReveal = (
       // Cubic ease-out, then whole steps so React re-renders at most 16 times.
       setProgress(Math.round((1 - (1 - linear) ** 3) * 16) / 16);
     },
-    { enabled: enabled && progress < 1, stillTime: duration, target },
+    { enabled: enabled && progress < 1, stillTime: duration, target }
   );
   return progress;
 };
@@ -499,7 +500,7 @@ const xLabelIndices = (count: number, every: number) => {
 const labelAnchor = (
   layout: "point" | "band",
   index: number,
-  count: number,
+  count: number
 ) => {
   if (layout === "band" || count === 1) {
     return "middle";
@@ -541,7 +542,7 @@ const READOUT_GAP = 12;
  */
 const useReadoutPosition = (
   ref: { current: HTMLDivElement | null },
-  anchor: { x: number; y: number; width: number; top: number } | null,
+  anchor: { x: number; y: number; width: number; top: number } | null
 ) => {
   useLayoutEffect(() => {
     const el = ref.current;
@@ -552,7 +553,7 @@ const useReadoutPosition = (
     const above = anchor.y - h - READOUT_GAP;
     let left = Math.min(
       Math.max(0, anchor.x - w / 2),
-      Math.max(0, anchor.width - w),
+      Math.max(0, anchor.width - w)
     );
     let top = above;
     if (above < 0) {
@@ -606,7 +607,7 @@ const useScrub = ({
       setScrub((current) =>
         current?.index === index && current.visible
           ? current
-          : { glide: current?.visible === true, index, visible: true },
+          : { glide: current?.visible === true, index, visible: true }
       );
     });
   };
@@ -658,7 +659,7 @@ const useScrub = ({
     setScrub((current) =>
       current?.visible === true
         ? current
-        : { glide: false, index: current?.index ?? count - 1, visible: true },
+        : { glide: false, index: current?.index ?? count - 1, visible: true }
     );
 
   return {
@@ -701,7 +702,7 @@ const Axes = <T,>({
   // Space x labels so they never collide: about one per 72px.
   const shown = xLabelIndices(
     count,
-    Math.ceil(count / Math.max(1, Math.floor(plotWidth / 72))),
+    Math.ceil(count / Math.max(1, Math.floor(plotWidth / 72)))
   );
   return (
     <g>
@@ -739,7 +740,7 @@ const Axes = <T,>({
           >
             {readLabel(datum, x)}
           </text>
-        ) : null,
+        ) : null
       )}
     </g>
   );
@@ -822,7 +823,7 @@ const Readout = ({
     data-glide={glide}
     className={cn(
       "bg-popover/95 text-popover-foreground border-border pointer-events-none absolute top-0 left-0 z-10 min-w-32 rounded-lg border px-2.5 py-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur-sm",
-      GLIDE,
+      GLIDE
     )}
     style={{ opacity: visible ? 1 : 0 }}
   >
@@ -837,7 +838,7 @@ const Readout = ({
               key={value.label}
               className={cn(
                 "flex items-center gap-2 text-xs transition-opacity duration-150",
-                focus !== null && focus !== index && "opacity-40",
+                focus !== null && focus !== index && "opacity-40"
               )}
             >
               <span
@@ -894,7 +895,7 @@ const Legend = ({
       );
       const itemClass = cn(
         "text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] transition-[color,opacity,background-color] duration-150 ease-out",
-        focus !== null && focus !== index && "opacity-45",
+        focus !== null && focus !== index && "opacity-45"
       );
       if (!interactive) {
         return (
@@ -921,7 +922,7 @@ const Legend = ({
           }}
           className={cn(
             itemClass,
-            "hover:text-foreground focus-visible:ring-ring/60 aria-pressed:bg-muted aria-pressed:text-foreground cursor-pointer outline-none focus-visible:ring-2",
+            "hover:text-foreground focus-visible:ring-ring/60 aria-pressed:bg-muted aria-pressed:text-foreground cursor-pointer outline-none focus-visible:ring-2"
           )}
         >
           {content}
@@ -980,7 +981,8 @@ const scrubView = ({
   context: ChartContext | null;
   pointsAt: (index: number, context: ChartContext) => readonly ScrubPoint[];
   activeMarks:
-    ((index: number, context: ChartContext) => ReactNode) | undefined;
+    | ((index: number, context: ChartContext) => ReactNode)
+    | undefined;
 }): ScrubView => {
   const scrubbing = scrub?.visible === true;
   const glide = String(scrub?.glide ?? false);
@@ -1136,7 +1138,7 @@ export const CartesianChart = <T,>({
   const width = size?.width ?? 0;
   const { plot, plotWidth, band, xAt, yAt, tickLabels } = useMemo(
     () => layoutPlot({ axes, count, formatTick, height, layout, scale, width }),
-    [axes, count, formatTick, height, layout, scale, width],
+    [axes, count, formatTick, height, layout, scale, width]
   );
   const indexAt = (px: number) => {
     const offset = (px - plot.left) / band;
@@ -1153,7 +1155,7 @@ export const CartesianChart = <T,>({
   const scrubbing = scrub?.visible === true;
   const colorOf = useCallback(
     (index: number) => seriesColor(series[index]?.color, index, colors),
-    [series, colors],
+    [series, colors]
   );
   const context = useMemo<ChartContext | null>(
     () =>
@@ -1190,11 +1192,11 @@ export const CartesianChart = <T,>({
       width,
       xAt,
       yAt,
-    ],
+    ]
   );
   const marks = useMemo(
     () => (context === null ? null : children(context)),
-    [children, context],
+    [children, context]
   );
 
   const rowsFor = useCallback(
@@ -1205,7 +1207,7 @@ export const CartesianChart = <T,>({
         label: entry.label,
         value: formatValue(readValue(datum, entry.value)),
       })),
-    [readout, series, colorOf, formatValue],
+    [readout, series, colorOf, formatValue]
   );
   const tableRows = useMemo(
     () =>
@@ -1213,7 +1215,7 @@ export const CartesianChart = <T,>({
         label: readLabel(datum, x),
         values: rowsFor(datum),
       })),
-    [data, x, rowsFor],
+    [data, x, rowsFor]
   );
   const labels = series.map((entry) => entry.label);
 
@@ -1232,7 +1234,7 @@ export const CartesianChart = <T,>({
     readoutRef,
     showReadout
       ? { top: plot.top, width, x: view.activeX, y: view.anchorY }
-      : null,
+      : null
   );
 
   return (

@@ -116,7 +116,7 @@ const write = (
   out: Uint8ClampedArray,
   offset: number,
   color: PaletteColor,
-  alpha: number,
+  alpha: number
 ) => {
   out[offset] = color[0] * 255;
   out[offset + 1] = color[1] * 255;
@@ -128,7 +128,7 @@ const ditherOrdered = (
   image: PixelBuffer,
   method: OrderedMethod,
   palette: ImagePalette,
-  bias: number,
+  bias: number
 ): Uint8ClampedArray<ArrayBuffer> => {
   const { data, width, height } = image;
   const out = new Uint8ClampedArray(data.length);
@@ -178,10 +178,10 @@ const spreadError = ({
       continue;
     }
     const target = (ny * width + nx) * 3;
-    error.forEach((channelError, channel) => {
+    for (let channel = 0; channel < 3; channel += 1) {
       work[target + channel] =
-        (work[target + channel] ?? 0) + channelError * weight;
-    });
+        (work[target + channel] ?? 0) + error[channel] * weight;
+    }
   }
 };
 
@@ -190,7 +190,7 @@ const ditherDiffusion = (
   kernel: Kernel,
   palette: ImagePalette,
   bias: number,
-  serpentine: boolean,
+  serpentine: boolean
 ): Uint8ClampedArray<ArrayBuffer> => {
   const { data, width, height } = image;
   const out = new Uint8ClampedArray(data.length);
@@ -235,7 +235,7 @@ const DEFAULT_OPTIONS: DiffuseOptions = { method: "floyd-steinberg" };
  */
 export const ditherImage = (
   image: PixelBuffer,
-  options: DiffuseOptions = DEFAULT_OPTIONS,
+  options: DiffuseOptions = DEFAULT_OPTIONS
 ): ImageData => {
   const palette = options.palette ?? BLACK_AND_WHITE;
   const bias = 0.5 - (options.threshold ?? 0.5);
@@ -255,7 +255,7 @@ export const ditherImage = (
         KERNELS[options.method],
         palette,
         bias,
-        options.serpentine ?? true,
+        options.serpentine ?? true
       );
       break;
     }

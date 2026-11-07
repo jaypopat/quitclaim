@@ -115,7 +115,7 @@ interface Timing {
 const LEVELS = 16;
 // Mask images per dither level, built once.
 const MASKS = Array.from({ length: LEVELS + 1 }, (_, level) =>
-  ditherMask(level / LEVELS),
+  ditherMask(level / LEVELS)
 );
 
 // A cheap stable hash in [0, 1) so the stagger has a little irregularity
@@ -150,7 +150,7 @@ const slotFrame = (
     mode,
     timing,
   }: { order: number; elapsed: number; mode: ScrambleMode; timing: Timing },
-  before: Phase,
+  before: Phase
 ): SlotFrame => {
   const offset = (jitter(order) - 0.5) * timing.stagger * 1.4;
   const start = Math.max(0, timing.delay + order * timing.stagger + offset);
@@ -347,7 +347,7 @@ export const ScrambleText = ({
       runRef.current = { from, keepSame, start: null, ticks: [] };
       setRunning(true);
     },
-    [reducedMotion],
+    [reducedMotion]
   );
 
   useLayoutEffect(() => {
@@ -402,7 +402,7 @@ export const ScrambleText = ({
     const fontSize = Number.parseFloat(getComputedStyle(el).fontSize) || 16;
     el.style.setProperty(
       "--scramble-cell",
-      `${cell ?? Math.max(1, Math.round(fontSize / 22))}px`,
+      `${cell ?? Math.max(1, Math.round(fontSize / 22))}px`
     );
   }, [cell, running]);
 
@@ -488,7 +488,7 @@ export const ScrambleText = ({
         completeRef.current?.();
       }
     },
-    { enabled: running, fps: 60, target: ref },
+    { enabled: running, fps: 60, target: ref }
   );
 
   const rootStyle: CSSProperties & Record<"--scramble-color", string> = {
@@ -510,14 +510,14 @@ export const ScrambleText = ({
       data-state={rootState}
       className={cn(
         "inline-grid [font-kerning:none] [font-variant-ligatures:none]",
-        className,
+        className
       )}
       style={rootStyle}
     >
       <span
         className={cn(
           "[grid-area:1/1]",
-          (running || waiting) && "text-transparent",
+          (running || waiting) && "text-transparent"
         )}
       >
         {children}
@@ -549,7 +549,7 @@ export const ScrambleText = ({
                       className={cn(
                         ITEM_CLASS,
                         "invisible text-(--scramble-color) transition-colors duration-700 ease-(--ease-out)",
-                        "group-data-[phase=done]/slot:visible group-data-[phase=done]/slot:text-current",
+                        "group-data-[phase=done]/slot:visible group-data-[phase=done]/slot:text-current"
                       )}
                     >
                       {char}
@@ -558,14 +558,14 @@ export const ScrambleText = ({
                       className={cn(
                         ITEM_CLASS,
                         "hidden h-[0.7em] w-[82%] bg-(--scramble-color) group-data-[phase=block]/slot:block",
-                        "[mask-repeat:repeat] [mask-size:calc(var(--scramble-cell)*4)] [-webkit-mask-repeat:repeat] [-webkit-mask-size:calc(var(--scramble-cell)*4)]",
+                        "[mask-repeat:repeat] [mask-size:calc(var(--scramble-cell)*4)] [-webkit-mask-repeat:repeat] [-webkit-mask-size:calc(var(--scramble-cell)*4)]"
                       )}
                     />
                     <span
                       className={cn(
                         ITEM_CLASS,
                         "hidden whitespace-pre text-(--scramble-color) opacity-80",
-                        "group-data-[phase=glyph]/slot:block group-data-[phase=old]/slot:block group-data-[phase=old]/slot:text-current group-data-[phase=old]/slot:opacity-45",
+                        "group-data-[phase=glyph]/slot:block group-data-[phase=old]/slot:block group-data-[phase=old]/slot:text-current group-data-[phase=old]/slot:opacity-45"
                       )}
                     />
                   </span>
@@ -573,7 +573,7 @@ export const ScrambleText = ({
               </span>
             ) : (
               word.space
-            ),
+            )
           )}
           {caret === "none" ? null : (
             <span
@@ -581,7 +581,7 @@ export const ScrambleText = ({
               className={cn(
                 "absolute top-0 left-0 w-[max(2px,0.07em)] bg-(--scramble-color) opacity-0",
                 !running &&
-                  "motion-safe:animate-[dcn-caret_1.1s_steps(1)_infinite]",
+                  "motion-safe:animate-[dcn-caret_1.1s_steps(1)_infinite]"
               )}
             />
           )}

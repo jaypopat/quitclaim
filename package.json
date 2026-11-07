@@ -11,7 +11,7 @@
     "fmt:check": "bun fmt --no-script --check && cargo fmt --all --check",
     "prepare": "git config core.hooksPath .githooks",
     "dev": "bun --filter @quitclaim/web dev",
-    "typecheck": "bun check",
+    "typecheck": "bun check -b",
     "test": "bun test packages apps",
     "build:lot": "cd contracts/lot && cargo near build non-reproducible-wasm",
     "test:lot": "cargo test -p quitclaim-lot",

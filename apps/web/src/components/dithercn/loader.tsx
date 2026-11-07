@@ -73,7 +73,7 @@ const easeInOut = (value: number) =>
 const radiusAt = ({ cols, rows }: Grid, x: number, y: number) =>
   Math.hypot(
     (x + 0.5 - cols / 2) / (cols / 2),
-    (y + 0.5 - rows / 2) / (rows / 2),
+    (y + 0.5 - rows / 2) / (rows / 2)
   );
 
 /**
@@ -267,7 +267,7 @@ export const Loader = ({
         });
       }
     },
-    [field, grid, ink, matrix],
+    [field, grid, ink, matrix]
   );
 
   // Snap cells to whole device pixels, as the shader does, so every cell is the same size.
@@ -287,7 +287,7 @@ export const Loader = ({
       timeRef.current = time * speed + STILL_TIME[variant];
       draw(timeRef.current);
     },
-    { stillTime: 0, target: rootRef },
+    { stillTime: 0, target: rootRef }
   );
 
   // Redraw the current frame when the colour or shape changes while still.
@@ -303,7 +303,7 @@ export const Loader = ({
       data-variant={variant}
       className={cn(
         "inline-flex shrink-0 items-center justify-center",
-        className,
+        className
       )}
       {...props}
     >

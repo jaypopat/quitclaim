@@ -16,7 +16,7 @@ export const usePrefersReducedMotion = (): boolean =>
   useSyncExternalStore(
     subscribeToReducedMotion,
     () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
-    () => false,
+    () => false
   );
 
 const subscribeToVisibility = (onChange: () => void) => {
@@ -29,7 +29,7 @@ export const useDocumentVisible = (): boolean =>
   useSyncExternalStore(
     subscribeToVisibility,
     () => document.visibilityState === "visible",
-    () => true,
+    () => true
   );
 
 /**
@@ -38,7 +38,7 @@ export const useDocumentVisible = (): boolean =>
  */
 export const useInView = (
   ref: RefObject<Element | null>,
-  { rootMargin = "120px" }: { rootMargin?: string } = {},
+  { rootMargin = "120px" }: { rootMargin?: string } = {}
 ): boolean => {
   const [inView, setInView] = useState(false);
 
@@ -49,7 +49,7 @@ export const useInView = (
     }
     const observer = new IntersectionObserver(
       ([entry]) => setInView(entry?.isIntersecting ?? false),
-      { rootMargin },
+      { rootMargin }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -97,7 +97,7 @@ const MAX_DELTA = 0.1;
  */
 export const useFrameLoop = (
   callback: FrameLoopCallback,
-  { target, enabled = true, fps = 30, stillTime = 0 }: FrameLoopOptions = {},
+  { target, enabled = true, fps = 30, stillTime = 0 }: FrameLoopOptions = {}
 ): FrameLoopState => {
   const callbackRef = useRef(callback);
   useEffect(() => {

@@ -57,7 +57,7 @@ export const seriesColor = (color: DitherColor | undefined, index: number) =>
 const cellsPath = (
   width: number,
   height: number,
-  inked: (x: number, y: number) => boolean,
+  inked: (x: number, y: number) => boolean
 ) => {
   let path = "";
   for (let y = 0; y < height; y += 1) {
@@ -158,7 +158,7 @@ export const ditherRamp = ({
       height,
       (x, y) =>
         levelAt(vertical ? y : x) >
-        (thresholds[(y % size) * size + (x % size)] ?? 1),
+        (thresholds[(y % size) * size + (x % size)] ?? 1)
     ),
     width,
   };
@@ -217,7 +217,7 @@ export const fillStyle = (
     from = 1,
     to = 0.0625,
     matrix = "bayer4",
-  }: FillStyleOptions = {},
+  }: FillStyleOptions = {}
 ): CSSProperties => {
   const backgroundColor = cssColor(color);
   if (variant === "solid") {
@@ -287,7 +287,7 @@ export const bloomLayerStyle = (bloom: Bloom): CSSProperties | undefined => {
  */
 export const bloomFilter = (
   color: DitherColor,
-  bloom: Bloom,
+  bloom: Bloom
 ): string | undefined => {
   if (bloom === "off") {
     return undefined;

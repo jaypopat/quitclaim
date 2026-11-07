@@ -50,7 +50,7 @@ export const resolveColor = (value: DitherColor, el?: Element | null): Rgba => {
 export const readDitherCell = (el?: Element | null): number => {
   const host = el ?? document.documentElement;
   const value = Number.parseFloat(
-    getComputedStyle(host).getPropertyValue("--dither-cell"),
+    getComputedStyle(host).getPropertyValue("--dither-cell")
   );
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_CELL;
 };
@@ -101,15 +101,15 @@ type ResolvedColors<Names extends readonly DitherColor[]> = {
  * ```
  */
 export function useDitherColors(
-  el?: RefObject<Element | null>,
+  el?: RefObject<Element | null>
 ): ResolvedColors<typeof DEFAULT_NAMES> | null;
 export function useDitherColors<const Names extends readonly DitherColor[]>(
   el: RefObject<Element | null> | undefined,
-  names: Names,
+  names: Names
 ): ResolvedColors<Names> | null;
 export function useDitherColors(
   el?: RefObject<Element | null>,
-  names: readonly DitherColor[] = DEFAULT_NAMES,
+  names: readonly DitherColor[] = DEFAULT_NAMES
 ): readonly Rgba[] | null {
   const [colors, setColors] = useState<readonly Rgba[] | null>(null);
   const key = names.join("|");

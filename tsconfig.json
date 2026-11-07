@@ -14,7 +14,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "paths": { "@/*": ["./apps/web/src/*"] },
 
     // Best practices
     "strict": true,
@@ -29,5 +28,6 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["apps", "packages"],
-  "exclude": ["node_modules", "spikes", "contracts"]
+  "exclude": ["node_modules", "spikes", "contracts", "apps/web"],
+  "references": [{ "path": "./apps/web" }]
 }

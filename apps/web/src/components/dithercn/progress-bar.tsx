@@ -94,7 +94,7 @@ const times = (cell: string, count: number) => `calc(${cell} * ${count})`;
 /** A tiled mask that cuts the bar into `segments` blocks one cell apart. */
 const segmentMask = (
   segments: number | undefined,
-  cell: string,
+  cell: string
 ): CSSProperties => {
   if (segments === undefined || segments < 2) {
     return {};
@@ -186,7 +186,7 @@ const Comet = ({
         duration: SWEEP_MS,
         easing: "cubic-bezier(0.65, 0, 0.35, 1)",
         iterations: Number.POSITIVE_INFINITY,
-      },
+      }
     );
     return () => animation.cancel();
   }, [reduced]);
@@ -267,7 +267,7 @@ const Parts = ({
             />
           </div>
         </div>
-      ) : null,
+      ) : null
     )}
   </div>
 );
@@ -448,7 +448,7 @@ export const ProgressBar = ({
       <div
         className={cn(
           "flex items-baseline justify-between gap-4 text-sm",
-          hideLabel && "sr-only",
+          hideLabel && "sr-only"
         )}
       >
         <span id={labelId} className="text-foreground min-w-0 truncate">

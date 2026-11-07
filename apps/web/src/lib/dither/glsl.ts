@@ -59,7 +59,7 @@ const hasDirective = (source: string) =>
  */
 export const withoutSharedHelpers = (
   field: string,
-  colorField: string,
+  colorField: string
 ): string => {
   if (hasDirective(field) || hasDirective(colorField)) {
     return colorField;
