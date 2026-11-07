@@ -159,7 +159,7 @@ pub struct Source {
     pub schedule: Schedule,
 }
 
-#[near(serializers = [json, borsh])]
+#[near(serializers = [json])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Config {
     pub signer: AccountId,

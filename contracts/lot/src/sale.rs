@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use near_contract_standards::non_fungible_token::TokenId;
 use near_sdk::json_types::U128;
-use near_sdk::{AccountId, Gas, NearToken, Promise, PromiseError, env, log, near, require};
+use near_sdk::{
+    AccountId, Gas, NearToken, Promise, PromiseError, assert_one_yocto, env, log, near, require,
+};
 
 use crate::{Contract, ContractExt, Item, Listing, LotId, LotState, Payout, nft};
 
@@ -33,7 +35,9 @@ impl Contract {
 impl Contract {
     /// The controller lists a Clean lot: the lease while one exists, else the title. Nothing can
     /// sign while Clean, so the position can't change under the offer.
+    #[payable]
     pub fn list(&mut self, id: LotId, price: U128) {
+        assert_one_yocto();
         let lot = self.load_mut(id);
         Self::require_controller(lot);
         require!(lot.state == LotState::Clean, "lot is not Clean");
@@ -52,7 +56,9 @@ impl Contract {
     }
 
     /// Withdraws the listing and any lease offer.
+    #[payable]
     pub fn delist(&mut self, id: LotId) {
+        assert_one_yocto();
         let lot = self.load_mut(id);
         Self::require_controller(lot);
         lot.listing = None;

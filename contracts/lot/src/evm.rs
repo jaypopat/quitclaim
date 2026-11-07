@@ -1,4 +1,4 @@
-use alloy_primitives::U256;
+use alloy_primitives::{U256, hex};
 use alloy_sol_types::{SolCall, sol};
 use near_sdk::env;
 use omni_transaction::evm::EVMTransaction;
@@ -137,7 +137,7 @@ pub fn assemble(
         s: strip(&s),
     });
     Some(SignedTx {
-        hash: format!("0x{}", hex::encode(env::keccak256_array(&raw))),
-        raw: format!("0x{}", hex::encode(raw)),
+        hash: hex::encode_prefixed(env::keccak256_array(&raw)),
+        raw: hex::encode_prefixed(raw),
     })
 }

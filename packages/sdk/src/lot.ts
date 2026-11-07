@@ -214,10 +214,13 @@ export async function list(
   id: number,
   priceYocto: bigint,
 ) {
-  return call(controller, contract, "list", {
-    id,
-    price: priceYocto.toString(),
-  });
+  return call(
+    controller,
+    contract,
+    "list",
+    { id, price: priceYocto.toString() },
+    { deposit: YOCTO },
+  );
 }
 
 /** Buys whatever is listed (title or lease) at its price, bound to the lot version the buyer just read. */
@@ -245,11 +248,13 @@ export async function offerLease(
   priceYocto: bigint,
   endsAtMs: number,
 ) {
-  return call(owner, contract, "offer_lease", {
-    id,
-    price: priceYocto.toString(),
-    ends_at_ms: endsAtMs,
-  });
+  return call(
+    owner,
+    contract,
+    "offer_lease",
+    { id, price: priceYocto.toString(), ends_at_ms: endsAtMs },
+    { deposit: YOCTO },
+  );
 }
 
 /** Takes a lease offer at its price, version and end time: `seen` if given, else the offer on the lot now. */

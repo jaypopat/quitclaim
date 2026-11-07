@@ -14,7 +14,7 @@ import {
   rescue,
   seal,
 } from "@quitclaim/sdk/lot.ts";
-import { call } from "@quitclaim/sdk/near.ts";
+import { call, YOCTO } from "@quitclaim/sdk/near.ts";
 import {
   alice,
   aliceEvm,
@@ -99,7 +99,7 @@ export async function recovery(run: Run) {
     links: settleLinks(r.steps),
   });
 
-  const u = await call(alice, contract, "unseal", { id });
+  const u = await call(alice, contract, "unseal", { id }, { deposit: YOCTO });
   const held = await base.tokenBalance(p.token, p.address);
   const bad = await requestTransfer(contract, alice, id, aliceEvm, {
     amount: held + 10n ** 30n,

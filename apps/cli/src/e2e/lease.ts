@@ -17,7 +17,7 @@ import {
   seal,
   takeLease,
 } from "@quitclaim/sdk/lot.ts";
-import { call, getFinality, view } from "@quitclaim/sdk/near.ts";
+import { call, getFinality, view, YOCTO } from "@quitclaim/sdk/near.ts";
 import {
   alice,
   aliceEvm,
@@ -307,7 +307,7 @@ export async function lease(run: Run) {
     pass: carolHeist?.status === "nonce-too-low",
   });
 
-  const u = await call(alice, contract, "unseal", { id });
+  const u = await call(alice, contract, "unseal", { id }, { deposit: YOCTO });
   const aliceTokensBefore = await base.tokenBalance(p.token, aliceEvm);
   const w4 = await withdrawTo(alice, id, aliceEvm);
   const s5 = await settle(contract, keeper, id);
