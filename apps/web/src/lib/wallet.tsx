@@ -1,3 +1,4 @@
+import { useRecoveryTabSync } from "./persisted-record.ts";
 import { NearConnector } from "@hot-labs/near-connect";
 import {
   createContext,
@@ -30,6 +31,7 @@ const Context = createContext<WalletContext | null>(null);
 
 /** No login key: every transaction is approved by the wallet with its exact deposit. */
 export function WalletProvider({ children }: { children: ReactNode }) {
+  useRecoveryTabSync();
   const [connector] = useState(
     () =>
       new NearConnector({

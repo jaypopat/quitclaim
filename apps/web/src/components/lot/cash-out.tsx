@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { erc20Abi, formatUnits, isHash } from "viem";
 import type { LotAction } from "@quitclaim/shared/actions.ts";
 import {
@@ -17,12 +17,7 @@ import { getLot } from "@quitclaim/shared/lot-views.ts";
 import type { LotView } from "@quitclaim/shared/lot-view.ts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  cashOutSnapshot,
-  readCashOut,
-  saveCashOut,
-  subscribeCashOut,
-} from "@/lib/cash-out.ts";
+import { readCashOut, saveCashOut, useCashOutRecord } from "@/lib/cash-out.ts";
 import { LOT_CONTRACT } from "@/lib/contract.ts";
 import { tokenAmount } from "@/lib/inputs.ts";
 import type { useSend } from "@/lib/use-send.ts";
@@ -41,12 +36,7 @@ export function CashOut({
 }) {
   const { id, lot } = view;
   const [amount, setAmount] = useState("");
-  const snapshot = useSyncExternalStore(
-    subscribeCashOut,
-    () => cashOutSnapshot(id),
-    () => null,
-  );
-  const record = snapshot ? readCashOut(id) : null;
+  const record = useCashOutRecord(id);
   const status = useQuery({
     queryKey: ["cash-out-status", record?.depositAddress],
     queryFn: async () => {

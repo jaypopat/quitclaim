@@ -1,5 +1,4 @@
-import { useSyncExternalStore } from "react";
-import { cashOutSnapshot, subscribeCashOut } from "@/lib/cash-out.ts";
+import { useCashOutRecord } from "@/lib/cash-out.ts";
 import { useWallet } from "@/lib/wallet.tsx";
 import { actions, type LotAction } from "@quitclaim/shared/actions.ts";
 import { floorFees } from "@quitclaim/shared/base.ts";
@@ -29,11 +28,7 @@ export function LotActions({ view }: { view: LotView }) {
   const { signedAccountId: account, signIn } = useWallet();
   const now = useNow();
   const send = useSend();
-  const cashOut = useSyncExternalStore(
-    subscribeCashOut,
-    () => cashOutSnapshot(view.id),
-    () => null,
-  );
+  const cashOut = useCashOutRecord(view.id);
   const available = actions(view, account, now);
   if (!available.length && !cashOut) return null;
   if (!account) return <Button onClick={signIn}>Connect wallet</Button>;
