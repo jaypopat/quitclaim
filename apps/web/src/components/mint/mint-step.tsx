@@ -10,12 +10,7 @@ import { TitleChecks } from "@/components/lot/title-checks.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { dateTime, formatToken } from "@/lib/format";
-import {
-  finalityQuery,
-  mintedLotQuery,
-  reachedQuery,
-  tokenQuery,
-} from "@/lib/queries.ts";
+import { mintedLotQuery, reachedQuery, tokenQuery } from "@/lib/queries.ts";
 import { useSend } from "@/lib/use-send.ts";
 import type { Receiving } from "./wizard.ts";
 
@@ -36,11 +31,7 @@ export function MintStep({
 }) {
   const send = useSend();
   const { data: token } = useQuery(tokenQuery(stream.token));
-  const { data: finality } = useQuery(finalityQuery);
-  const { data: final = false } = useQuery({
-    ...reachedQuery(stream.block, finality ?? "Safe"),
-    enabled: !!finality,
-  });
+  const { data: chain } = useQuery(reachedQuery(stream.block));
   const sent = send.isSuccess;
   const result = minted.parse(send.data?.value);
   const { data: lotId } = useQuery({
@@ -99,9 +90,9 @@ export function MintStep({
         ))}
       </dl>
       <TitleChecks checks={checks} title="Stream check" />
-      {!final && finality && (
+      {chain && !chain.reached && (
         <ProgressBar
-          label={`Waiting for Base to reach ${finality.toLowerCase()} finality for the stream's block`}
+          label={`Waiting for Base to reach ${chain.finality.toLowerCase()} finality for the stream's block`}
           size="sm"
         />
       )}
@@ -114,7 +105,7 @@ export function MintStep({
         <ProgressBar label="MPC is verifying the stream" size="sm" />
       ) : (
         <Button
-          disabled={!ok || !final || send.isPending}
+          disabled={!ok || !chain?.reached || send.isPending}
           onClick={() =>
             send.mutate(() =>
               contractCall(
