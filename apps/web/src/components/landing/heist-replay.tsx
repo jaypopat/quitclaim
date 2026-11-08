@@ -1,11 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { parseEvidence } from "@quitclaim/shared/heist/evidence.ts";
 import { observe, replay } from "@quitclaim/shared/heist/observe.ts";
 import { verifyHeist } from "@quitclaim/shared/heist/verify.ts";
 import { useState } from "react";
 import { Loader } from "@/components/dithercn/loader";
 import { Button } from "@/components/ui/button";
-import published from "../../../../../reports/heist.json";
+import { evidence } from "@/lib/heist-evidence.ts";
 
 /**
  * The keyless `bun run heist`, in the browser: verify the published handover from public RPCs, then
@@ -16,7 +15,7 @@ export function HeistReplay() {
   const run = useMutation({
     mutationFn: () => {
       setLines([]);
-      return verifyHeist(parseEvidence(published), {
+      return verifyHeist(evidence, {
         observe,
         replay,
         log: (line) => setLines((all) => [...all, line]),
@@ -36,7 +35,12 @@ export function HeistReplay() {
             Base Sepolia, and Base rejects it.
           </p>
         </div>
-        <Button size="lg" disabled={run.isPending} onClick={() => run.mutate()}>
+        <Button
+          size="lg"
+          className="h-12 px-6 text-[15px]"
+          disabled={run.isPending}
+          onClick={() => run.mutate()}
+        >
           {run.isPending ? "Replaying…" : "Try live replay"}
         </Button>
       </div>

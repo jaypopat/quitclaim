@@ -38,6 +38,36 @@ describe("position", () => {
 });
 
 describe("offer", () => {
+  test("does not advertise stale, expired or non-Clean offers", () => {
+    expect(
+      offer(
+        lot({
+          state: "Clean",
+          listing: { item: "Title", price: "6", version: 2 },
+        }),
+        NOW,
+      ),
+    ).toEqual({ kind: "none" });
+    expect(
+      offer(
+        lot({
+          state: "Active",
+          listing: { item: "Title", price: "6", version: 3 },
+        }),
+        NOW,
+      ),
+    ).toEqual({ kind: "none" });
+    expect(
+      offer(
+        lot({
+          state: "Clean",
+          lease_offer: { price: "4", ends_at_ms: NOW, version: 3 },
+        }),
+        NOW,
+      ),
+    ).toEqual({ kind: "none" });
+  });
+
   test("names whatever the lot is offered as", () => {
     const clean = { state: "Clean" as const };
     expect(

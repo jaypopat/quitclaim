@@ -30,6 +30,7 @@ export function PositionStats({
         <span className="flex items-baseline gap-2">
           <DitherNumber
             value={Number(formatUnits(position.remaining, token.decimals))}
+            from={Number(formatUnits(position.remaining, token.decimals))}
             format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
             size="md"
           />

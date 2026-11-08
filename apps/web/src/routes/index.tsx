@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { config } from "@quitclaim/shared/config.ts";
 import type { ReactNode } from "react";
+import { HandoverStory } from "@/components/landing/handover-story.tsx";
 import { HeistReplay } from "@/components/landing/heist-replay.tsx";
+import { OfferKinds } from "@/components/landing/offer-kinds.tsx";
 import { HeroLot } from "@/components/landing/hero-lot.tsx";
 import { LotCard } from "@/components/lot-card.tsx";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LOT_CONTRACT } from "@/lib/contract.ts";
 import { frozenQuery, lotIdsQuery } from "@/lib/queries.ts";
@@ -23,10 +24,18 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-20">
-      <h2 className="max-w-4xl text-5xl font-medium tracking-tight">{title}</h2>
+    <section className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
+      <H2>{title}</H2>
       {children}
     </section>
+  );
+}
+
+function H2({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="max-w-[14em] text-[clamp(30px,3.6vw,48px)] leading-[1.04] font-medium tracking-[-0.035em] text-balance">
+      {children}
+    </h2>
   );
 }
 
@@ -44,16 +53,18 @@ function Panel({
   children: ReactNode;
 }) {
   const body = (
-    <Card className={accent ? "h-full border-primary" : "h-full"}>
-      <CardContent className="flex flex-col gap-3">
-        <span className="font-mono text-xs text-primary">
-          {eyebrow}
-          {href && " ↗"}
-        </span>
-        <h3 className="text-lg font-medium">{title}</h3>
-        <p className="text-sm text-muted-foreground">{children}</p>
-      </CardContent>
-    </Card>
+    <div
+      className={`flex h-full flex-col gap-3 border bg-card p-6 transition-colors ${accent ? "border-primary" : ""} ${href ? "hover:border-primary" : ""}`}
+    >
+      <span className="font-mono text-xs text-primary">
+        {eyebrow}
+        {href && " ↗"}
+      </span>
+      <h3 className="text-xl leading-snug font-medium tracking-[-0.01em]">
+        {title}
+      </h3>
+      <p className="text-sm text-pretty text-muted-foreground">{children}</p>
+    </div>
   );
   return href ? (
     <a href={href} target="_blank" rel="noreferrer">
@@ -64,39 +75,36 @@ function Panel({
   );
 }
 
-const HEIST_STEPS = [
-  "A Sablier stream pays one fixed address. Alice holds its NFT title.",
-  "Alice signs a withdrawal and keeps it instead of sending it.",
-  "Freeze signing. Consume the outstanding nonce on Base, and NEAR checks the burn.",
-  "Bob buys the NFT. The address and schedule stay the same.",
-  "Alice sends the same saved withdrawal. Base rejects its used nonce.",
-];
-
 function Landing() {
   const { data: ids } = useQuery(lotIdsQuery);
   const { data: frozen } = useQuery(frozenQuery);
   const heroId = ids?.at(0);
   return (
     <main>
-      <section className="grid min-h-[calc(100dvh-4rem)] items-center gap-12 px-[clamp(20px,4vw,64px)] py-16 lg:grid-cols-2">
-        <div className="flex flex-col gap-8">
+      <section className="grid min-h-[calc(100dvh-4rem)] items-center gap-[clamp(32px,5vw,72px)] px-[clamp(20px,4vw,64px)] pt-[clamp(24px,4vh,48px)] pb-[clamp(48px,8vh,96px)] lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-7">
           <span className="font-mono text-xs text-primary">
             BUILT ON NEAR CHAIN SIGNATURES
           </span>
-          <h1 className="text-7xl font-medium tracking-tight">
+          <h1 className="text-[clamp(44px,6.4vw,88px)] leading-[0.98] font-medium tracking-[-0.045em] text-balance">
             Sell a wallet. The seller keeps nothing.
           </h1>
-          <p className="max-w-xl text-lg text-muted-foreground">
+          <p className="max-w-[27em] text-[clamp(17px,1.4vw,19px)] text-pretty text-muted-foreground">
             Sell your locked vesting tokens, even from a non-transferable
             stream. The stream pays one address. An NFT on NEAR is the title to
             it. Before the title moves, everything the seller signed is
             cancelled on Base.
           </p>
-          <div className="flex gap-3">
-            <Button asChild size="lg">
+          <div className="flex flex-wrap gap-3">
+            <Button asChild size="lg" className="h-12 px-6 text-[15px]">
               <Link to="/market">Browse positions</Link>
             </Button>
-            <Button asChild size="lg" variant="outline">
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 px-5 text-[15px]"
+            >
               <a href="#heist">Watch the handover ↓</a>
             </Button>
           </div>
@@ -176,60 +184,29 @@ function Landing() {
 
       <section
         id="heist"
-        className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-20"
+        className="flex scroll-mt-16 flex-col gap-12 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]"
       >
-        <div className="grid gap-10 lg:grid-cols-2">
-          <h2 className="text-5xl font-medium tracking-tight">
-            Watch a sale. Then try to rob it.
-          </h2>
-          <ol className="flex flex-col">
-            {HEIST_STEPS.map((step, i) => (
-              <li key={step} className="flex gap-4 border-b py-3">
-                <span className="font-mono text-xs text-muted-foreground">
-                  0{i + 1}
-                </span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
+        <HandoverStory />
+        <div className="border border-primary p-[clamp(20px,3vw,36px)]">
+          <HeistReplay />
         </div>
-        <Card className="border-primary">
-          <CardContent>
-            <HeistReplay />
-          </CardContent>
-        </Card>
       </section>
 
       <Section title="Sell it all, or lease the unlocks.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Panel eyebrow="SELL" title="The buyer gets every payout left.">
-            The title moves for good. The seller gets NEAR, and the original
-            holder can earn a royalty on each resale.
-          </Panel>
-          <Panel
-            eyebrow="LEASE"
-            title="The lessee gets the unlocks until it ends."
-          >
-            They can withdraw only what vests during the lease. When it ends,
-            the locks change again and control returns.
-          </Panel>
-        </div>
+        <OfferKinds />
       </Section>
 
-      <Section
-        title={
-          <span className="flex items-baseline justify-between gap-4">
-            On the market
-            <Link
-              to="/market"
-              className="text-sm font-normal text-muted-foreground hover:text-foreground"
-            >
-              See all →
-            </Link>
-          </span>
-        }
-      >
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+      <section className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <H2>On the market</H2>
+          <Link
+            to="/market"
+            className="text-[15px] underline decoration-border underline-offset-[5px] hover:decoration-primary"
+          >
+            See all positions
+          </Link>
+        </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4">
           {ids
             ? ids
                 .slice(-4)
@@ -239,14 +216,14 @@ function Landing() {
                 <Skeleton key={i} className="h-96" />
               ))}
         </div>
-      </Section>
+      </section>
 
       <Section title="What's real.">
         <p className="-mt-6 max-w-2xl text-muted-foreground">
           Everything here runs on NEAR testnet and Base Sepolia today. The NFT
           isn't a picture. It's a working title to a wallet.
         </p>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-4">
           <Panel
             eyebrow="CONTRACT"
             title="Deployed on NEAR testnet."
@@ -276,8 +253,8 @@ function Landing() {
               : "At the end, every full-access key on the contract is deleted so nobody can change it."}
           </Panel>
         </div>
-        <p className="border p-4 text-sm">
-          <span className="mr-3 font-mono text-xs text-muted-foreground">
+        <p className="border p-5 text-sm leading-relaxed">
+          <span className="mr-3 font-mono text-xs text-primary">
             WHAT YOU'RE TRUSTING
           </span>
           NEAR's MPC network signs and attests honestly. The lot contract is
@@ -288,15 +265,20 @@ function Landing() {
         </p>
       </Section>
 
-      <section className="flex flex-wrap items-center justify-between gap-8 border-t px-[clamp(20px,4vw,64px)] py-24">
-        <h2 className="text-5xl font-medium tracking-tight">
+      <section className="flex flex-wrap items-end justify-between gap-8 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
+        <h2 className="max-w-[11em] text-[clamp(34px,4.6vw,64px)] leading-none font-medium tracking-[-0.04em] text-balance">
           Buy future payouts. Keep them.
         </h2>
-        <div className="flex gap-3">
-          <Button asChild size="lg">
+        <div className="flex flex-wrap gap-3">
+          <Button asChild size="lg" className="h-12 px-6 text-[15px]">
             <Link to="/market">Browse positions</Link>
           </Button>
-          <Button asChild size="lg" variant="outline">
+          <Button
+            asChild
+            size="lg"
+            variant="outline"
+            className="h-12 px-5 text-[15px]"
+          >
             <Link to="/mint">Sell a position</Link>
           </Button>
         </div>

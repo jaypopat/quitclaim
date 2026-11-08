@@ -13,7 +13,7 @@ import { lotQuery } from "@/lib/queries.ts";
 
 function Row({ chain, children }: { chain?: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[3rem_1fr] items-center gap-4">
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-3">
       <span className="font-mono text-xs text-muted-foreground">{chain}</span>
       {children}
     </div>
@@ -42,7 +42,7 @@ export function HeroLot({ id }: { id: number }) {
     <Link
       to="/lot/$id"
       params={{ id }}
-      className="flex flex-col gap-1 border bg-card p-6 transition-colors hover:border-muted-foreground"
+      className="flex w-full max-w-[520px] min-w-0 flex-col gap-1 justify-self-center border bg-card p-[clamp(16px,2vw,24px)] transition-colors hover:border-muted-foreground"
     >
       <Row chain="NEAR">
         <div className="flex items-center gap-4 border border-primary p-4">
@@ -50,13 +50,13 @@ export function HeroLot({ id }: { id: number }) {
             id={id}
             offer={offer(view.lot, now).kind}
             size={2}
-            className="size-12 shrink-0"
+            className="size-16 shrink-0"
           />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="font-mono text-xs text-primary">
               NFT TITLE · NEP-171
             </span>
-            <span className="font-medium">Quitclaim #{id}</span>
+            <span className="text-lg font-medium">Quitclaim #{id}</span>
             <span className="truncate font-mono text-xs text-muted-foreground">
               held by {view.lot.owner}
             </span>
@@ -66,7 +66,7 @@ export function HeroLot({ id }: { id: number }) {
       <Wire label="controls signing for" />
       <Row chain="BASE">
         <div className="flex flex-col gap-2 border p-4">
-          <span className="flex justify-between font-mono text-xs">
+          <span className="flex flex-wrap justify-between gap-x-3 font-mono text-xs">
             <span className="text-primary">LOT ADDRESS · NO PRIVATE KEY</span>
             <span>{shortAddress(view.address)}</span>
           </span>
@@ -75,13 +75,14 @@ export function HeroLot({ id }: { id: number }) {
           </span>
           <DitherNumber
             value={Number(formatUnits(vestedSoFar, decimals))}
+            from={Number(formatUnits(vestedSoFar, decimals))}
             format={{
               minimumFractionDigits: decimals,
               maximumFractionDigits: decimals,
             }}
             size="md"
           />
-          <span className="flex justify-between text-sm">
+          <span className="flex flex-wrap justify-between gap-x-3 text-sm">
             <span>{formatPercent(pos.vestedFraction)} vested</span>
             <span className="text-muted-foreground">
               {formatToken(pos.locked, decimals)} {symbol} to come

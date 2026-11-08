@@ -67,35 +67,35 @@ function LotPage() {
       >
         ← Market
       </Link>
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-        <div className="flex min-w-0 flex-col gap-8">
-          <div className="flex items-center gap-5">
-            <LotField
-              id={id}
-              offer={current.kind}
-              size={2}
-              className="size-24 shrink-0 border"
-            />
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="font-mono text-xs text-muted-foreground">
-                NFT · NEP-171 · {view.lot.path}
-              </span>
-              <div className="flex items-baseline gap-3">
-                <h1 className="text-5xl font-medium tracking-tight">
-                  Quitclaim #{id}
-                </h1>
-                <Badge variant="outline">{view.lot.state}</Badge>
-              </div>
-              <a
-                href={baseAddressUrl(view.address)}
-                target="_blank"
-                rel="noreferrer"
-                className="truncate font-mono text-xs text-muted-foreground hover:text-foreground"
-              >
-                Controls {view.address} on Base ↗
-              </a>
+      <div className="grid gap-x-10 gap-y-8 [grid-template-areas:'head'_'offer'_'body'] lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] lg:[grid-template-areas:'head_offer'_'body_offer']">
+        <div className="flex min-w-0 items-center gap-5 [grid-area:head]">
+          <LotField
+            id={id}
+            offer={current.kind}
+            size={2}
+            className="size-[clamp(80px,10vw,132px)] shrink-0 border"
+          />
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="truncate font-mono text-xs text-muted-foreground">
+              NFT · NEP-171 · {view.lot.path}
+            </span>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="text-[clamp(34px,4.6vw,56px)] leading-none font-medium tracking-[-0.03em]">
+                Quitclaim #{id}
+              </h1>
+              <Badge variant="outline">{view.lot.state}</Badge>
             </div>
+            <a
+              href={baseAddressUrl(view.address)}
+              target="_blank"
+              rel="noreferrer"
+              className="truncate font-mono text-xs text-muted-foreground hover:text-foreground"
+            >
+              Controls {view.address} on Base ↗
+            </a>
           </div>
+        </div>
+        <div className="flex min-w-0 flex-col gap-8 [grid-area:body]">
           <VestingChart
             schedule={schedule}
             nowSec={now / 1000}
@@ -109,7 +109,7 @@ function LotPage() {
             endSec={schedule.end}
           />
         </div>
-        <div>
+        <div className="min-w-0 [grid-area:offer]">
           <OfferBox offer={current} lot={view.lot}>
             <SettleStatus settle={settleProgress(view)} />
             <LotActions view={view} />

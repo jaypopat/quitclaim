@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import { Dithering } from "@paper-design/shaders-react";
 import type { Offer } from "@quitclaim/shared/derive.ts";
 import { useDitherColors, type Rgba } from "@/lib/dither";
+import { usePrefersReducedMotion } from "@/lib/dither/motion";
 import { cn } from "@/lib/utils";
 
 type Shape = ComponentProps<typeof Dithering>["shape"];
@@ -28,6 +29,7 @@ export function LotField({
   size?: number;
   className?: string;
 }) {
+  const reduced = usePrefersReducedMotion();
   const colors = useDitherColors(undefined, ["ink", "--card"]);
   return (
     <div className={cn("bg-card", className)} aria-hidden>
@@ -39,7 +41,7 @@ export function LotField({
           shape={SHAPES[offer]}
           type="4x4"
           size={size}
-          speed={0.25}
+          speed={reduced ? 0 : 0.25}
           scale={0.7 + (id % 5) * 0.1}
           rotation={(id * 67) % 360}
           offsetX={((id * 37) % 40) / 100 - 0.2}

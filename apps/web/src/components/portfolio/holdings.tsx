@@ -37,6 +37,7 @@ function TitlesValue({ ids }: { ids: number[] }) {
         <span className="flex items-baseline gap-2">
           <DitherNumber
             value={token ? Number(formatUnits(total, token.decimals)) : 0}
+            from={token ? Number(formatUnits(total, token.decimals)) : 0}
             format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
             size="md"
           />

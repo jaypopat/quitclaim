@@ -11,11 +11,11 @@ export function Layout() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
-        <div className="flex h-16 items-center gap-6 px-[clamp(20px,4vw,64px)]">
+        <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 px-[clamp(20px,4vw,64px)] py-3">
           <Link to="/" className="text-base font-semibold tracking-tight">
             Quitclaim
           </Link>
-          <nav className="flex gap-5 text-sm">
+          <nav className="order-3 flex basis-full gap-5 text-sm sm:order-none sm:basis-auto">
             {nav.map((item) => (
               <Link
                 key={item.to}

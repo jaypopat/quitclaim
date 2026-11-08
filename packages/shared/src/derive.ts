@@ -45,13 +45,22 @@ export type Offer =
   | { kind: "none" };
 
 export function offer(lot: Lot, nowMs: number): Offer {
-  if (lot.listing)
+  if (
+    lot.listing &&
+    lot.state === "Clean" &&
+    lot.listing.version === lot.version
+  )
     return {
       kind: "sale",
       item: lot.listing.item,
       price: BigInt(lot.listing.price),
     };
-  if (lot.lease_offer)
+  if (
+    lot.lease_offer &&
+    lot.state === "Clean" &&
+    lot.lease_offer.version === lot.version &&
+    nowMs < lot.lease_offer.ends_at_ms
+  )
     return {
       kind: "lease-offer",
       price: BigInt(lot.lease_offer.price),
