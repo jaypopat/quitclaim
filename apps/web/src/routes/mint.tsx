@@ -29,12 +29,13 @@ function Mint() {
 function MintSession() {
   const { signedAccountId: account, signIn } = useWallet();
   const [wizard, updateWizard] = useState<Wizard>({ step: "address" });
-  const setWizard: typeof updateWizard = (next) =>
-    updateWizard((previous) => {
-      const value = typeof next === "function" ? next(previous) : next;
+  const setWizard = useCallback(
+    (value: Wizard) => {
       if (account) saveWizard(account, value);
-      return value;
-    });
+      updateWizard(value);
+    },
+    [account],
+  );
   const [restoring, setRestoring] = useState(true);
   useEffect(() => {
     let active = true;
@@ -57,11 +58,11 @@ function MintSession() {
     };
   }, [account]);
   const minted = useCallback(
-    (lotId: number) =>
-      setWizard((w) =>
-        w.step === "mint" ? { step: "done", receiving: w.receiving, lotId } : w,
-      ),
-    [account],
+    (lotId: number) => {
+      if (wizard.step === "mint")
+        setWizard({ step: "done", receiving: wizard.receiving, lotId });
+    },
+    [wizard, setWizard],
   );
 
   if (!account)

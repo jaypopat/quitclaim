@@ -1,125 +1,99 @@
 import { expect, test } from "@playwright/test";
 
-// Exercise real localStorage and Zustand's persistence in Chromium, without sending a transaction.
-test("legacy recovery records survive the Zustand upgrade and a reload", async ({
+const contract = process.env.LOT_CONTRACT;
+if (!contract) throw new Error("LOT_CONTRACT is required");
+const storeKey = `quitclaim:recovery:${contract}`;
+const cashKey = `quitclaim:cash-out:${contract}:3`;
+const mintKey = `quitclaim:mint:${contract}:alice.testnet`;
+const payment = {
+  depositAddress: "0x0000000000000000000000000000000000000001",
+  recipient: "alice.testnet",
+  amount: "500000",
+  payout: "1000000000000000000000",
+  deadline: "2026-11-08T15:00:00Z",
+  approvalStarted: true,
+  fromBlock: "1",
+};
+
+test("a new browser starts with empty recovery records", async ({ page }) => {
+  await page.goto("http://localhost:3001/mint");
+  const state = await page.evaluate(async () => {
+    const path = "/src/lib/recovery.ts";
+    return (await import(path)).readRecovery();
+  });
+  expect(state).toEqual({ cashOuts: {}, mints: {} });
+});
+
+test("old per-record data survives the single-store migration and reload", async ({
   page,
 }) => {
+  await page.addInitScript(
+    ({ cashKey, mintKey, payment }) => {
+      if (location.origin === "null") return;
+      localStorage.setItem(cashKey, JSON.stringify(payment));
+      localStorage.setItem(
+        mintKey,
+        JSON.stringify({ state: { value: { step: "address" } }, version: 1 }),
+      );
+    },
+    { cashKey, mintKey, payment },
+  );
   await page.goto("http://localhost:3001/mint");
-  const result = await page.evaluate(async () => {
-    const modulePath = "/src/lib/persisted-record.ts";
-    const inputsPath = "/src/lib/inputs.ts";
-    const { persistedRecord } = await import(modulePath);
-    const { lotName } = await import(inputsPath);
-    const key = "quitclaim-test:legacy-record";
-    localStorage.setItem(key, JSON.stringify("saved-operation"));
-    const record = persistedRecord(key, lotName);
-    const recovered = record.read();
-    record.write("updated-operation");
-    return { recovered, saved: JSON.parse(localStorage.getItem(key)!) };
+  const result = await page.evaluate(async (key) => {
+    const path = "/src/lib/recovery.ts";
+    const cashPath = "/src/lib/cash-out.ts";
+    const { readRecovery } = await import(path);
+    const { readCashOut, saveCashOut } = await import(cashPath);
+    const before = readRecovery();
+    const record = readCashOut(3);
+    saveCashOut(3, { ...record, amount: "600000" });
+    return { before, saved: JSON.parse(localStorage.getItem(key)!) };
+  }, storeKey);
+  expect(result.before).toEqual({
+    cashOuts: { 3: payment },
+    mints: { "alice.testnet": { step: "address" } },
   });
-  expect(result.recovered).toBe("saved-operation");
-  expect(result.saved).toEqual({
-    state: { value: "updated-operation" },
-    version: 1,
-  });
+  expect(result.saved.state.cashOuts[3].amount).toBe("600000");
   await page.reload();
   const restored = await page.evaluate(async () => {
-    const modulePath = "/src/lib/persisted-record.ts";
-    const inputsPath = "/src/lib/inputs.ts";
-    const { persistedRecord } = await import(modulePath);
-    const { lotName } = await import(inputsPath);
-    return persistedRecord("quitclaim-test:legacy-record", lotName).read();
+    const path = "/src/lib/recovery.ts";
+    return (await import(path)).readRecovery();
   });
-  expect(restored).toBe("updated-operation");
+  expect(restored.cashOuts[3].amount).toBe("600000");
+  expect(restored.mints["alice.testnet"]).toEqual({ step: "address" });
 });
 
-test("invalid or future-version records block recovery and remain intact", async ({
-  page,
-}) => {
-  await page.goto("http://localhost:3001/mint");
-  const result = await page.evaluate(async () => {
-    const modulePath = "/src/lib/persisted-record.ts";
-    const inputsPath = "/src/lib/inputs.ts";
-    const { persistedRecord } = await import(modulePath);
-    const { lotName } = await import(inputsPath);
-    return [
-      "{broken",
-      JSON.stringify({ state: { value: "saved-operation" }, version: 2 }),
-    ].map((raw, i) => {
-      const key = `quitclaim-test:invalid-record:${i}`;
-      localStorage.setItem(key, raw);
-      const record = persistedRecord(key, lotName);
-      let blocked = false;
-      try {
-        record.read();
-      } catch {
-        blocked = true;
-      }
-      return { blocked, preserved: localStorage.getItem(key) === raw };
-    });
-  });
-  expect(result).toEqual([
-    { blocked: true, preserved: true },
-    { blocked: true, preserved: true },
-  ]);
-});
-
-test("the native storage event updates Zustand subscribers across tabs", async ({
-  context,
-  page,
-}) => {
-  await page.goto("http://localhost:3001/mint");
-  await page
-    .getByRole("heading", { name: "Set up receiving address" })
-    .waitFor();
-  await page.evaluate(async () => {
-    const modulePath = "/src/lib/persisted-record.ts";
-    const inputsPath = "/src/lib/inputs.ts";
-    const { persistedRecord } = await import(modulePath);
-    const { lotName } = await import(inputsPath);
-    const resources = performance
-      .getEntriesByType("resource")
-      .map((entry) => entry.name);
-    const reactUrl = resources.find((url) => url.includes("/react.js?"));
-    const domUrl = resources.find((url) =>
-      url.includes("/react-dom_client.js?"),
+for (const [label, raw] of [
+  ["corrupt", "{broken"],
+  [
+    "future-version",
+    JSON.stringify({ state: { cashOuts: {}, mints: {} }, version: 2 }),
+  ],
+]) {
+  test(`${label} recovery data blocks reads without overwriting it`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ key, raw }) => {
+        if (location.origin !== "null") localStorage.setItem(key, raw);
+      },
+      { key: storeKey, raw },
     );
-    if (!reactUrl || !domUrl)
-      throw new Error("The app's React runtime has not loaded");
-    const reactModule = await import(reactUrl);
-    const React = reactModule.default ?? reactModule;
-    const domModule = await import(domUrl);
-    const { createRoot } = domModule.default ?? domModule;
-    const record = persistedRecord("quitclaim-test:cross-tab", lotName);
-    record.write("initial-record");
-    const element = document.createElement("div");
-    document.body.append(element);
-    createRoot(element).render(
-      React.createElement(() =>
-        React.createElement(
-          "output",
-          { id: "recovery-test-value" },
-          record.useValue() ?? "empty",
-        ),
-      ),
+    await page.goto("http://localhost:3001/mint");
+    const result = await page.evaluate(
+      async ({ key, raw }) => {
+        const path = "/src/lib/recovery.ts";
+        const { readRecovery } = await import(path);
+        let blocked = false;
+        try {
+          readRecovery();
+        } catch {
+          blocked = true;
+        }
+        return { blocked, preserved: localStorage.getItem(key) === raw };
+      },
+      { key: storeKey, raw },
     );
+    expect(result).toEqual({ blocked: true, preserved: true });
   });
-  await expect(page.locator("#recovery-test-value")).toHaveText(
-    "initial-record",
-  );
-  const writer = await context.newPage();
-  await writer.goto("http://localhost:3001/mint");
-  await writer.evaluate(() =>
-    localStorage.setItem(
-      "quitclaim-test:cross-tab",
-      JSON.stringify({ state: { value: "from-another-tab" }, version: 1 }),
-    ),
-  );
-  await expect(page.locator("#recovery-test-value")).toHaveText(
-    "from-another-tab",
-  );
-  await writer.evaluate(() =>
-    localStorage.removeItem("quitclaim-test:cross-tab"),
-  );
-  await expect(page.locator("#recovery-test-value")).toHaveText("empty");
-});
+}

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { WalletProvider } from "@/lib/wallet.tsx";
+import { WalletProvider, walletConfig } from "@/lib/wallet.tsx";
 import {
   ClientOnly,
   createRootRoute,
@@ -37,11 +37,11 @@ export const Route = createRootRoute({
   component: Root,
 });
 
-/** wallet-selector reads browser storage as it renders, so the app renders only in the browser. */
+/** The wallet SDK reads browser storage as it renders, so the app renders only in the browser. */
 function Root() {
   return (
     <ClientOnly>
-      <WalletProvider>
+      <WalletProvider config={walletConfig}>
         <Layout />
       </WalletProvider>
     </ClientOnly>
