@@ -2,7 +2,7 @@ import { erc20Abi, getAddress, type Address } from "viem";
 import { fetchLotAddress } from "./address.ts";
 import { baseClient, tokenBalance } from "./base.ts";
 import type { Lot } from "./lot.gen.ts";
-import { getLot } from "./lot-views.ts";
+import { getLot, holdsTestUsdc } from "./lot-views.ts";
 import { titleSearch, withdrawn, type TitleSearch } from "./sablier.ts";
 
 /** A minted lot with what Base and Sablier say about it right now. */
@@ -30,6 +30,8 @@ export async function fetchLotView(
 ): Promise<LotView> {
   const lot = await getLot(contract, id);
   if (!lot?.address) throw new Error(`lot ${id} is not minted`);
+  if (!holdsTestUsdc(lot))
+    throw new Error(`lot ${id} holds an older test token`);
   const address = getAddress(lot.address);
   const token = getAddress(lot.token);
   const streamId = BigInt(lot.source.id);

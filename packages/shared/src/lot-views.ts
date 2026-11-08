@@ -4,6 +4,7 @@
  * schema misses fails `bun check`.
  */
 import { z } from "zod";
+import { config } from "./config.ts";
 import type {
   Issued,
   Lease,
@@ -132,11 +133,27 @@ async function paged(
   }
 }
 
-export const allTokens = (contract: string) =>
-  paged(contract, "nft_tokens", {});
+/** Lots minted before the switch to Tidepool's test USDC hold an older test token. The app shows none of them. */
+export const holdsTestUsdc = (lot: Lot) =>
+  lot.token.toLowerCase() === config.evm.token.toLowerCase();
 
-export const tokensOf = (contract: string, account: string) =>
-  paged(contract, "nft_tokens_for_owner", { account_id: account });
+async function inTestUsdc(contract: string, held: HeldToken[]) {
+  const ids = [...new Set(held.map((t) => t.lotId))];
+  const lots = await Promise.all(ids.map((id) => getLot(contract, id)));
+  const kept = new Set(ids.filter((_, i) => lots[i] && holdsTestUsdc(lots[i])));
+  return held.filter((t) => kept.has(t.lotId));
+}
+
+/** Every title and live lease of a test USDC lot. */
+export const allTokens = async (contract: string) =>
+  inTestUsdc(contract, await paged(contract, "nft_tokens", {}));
+
+/** The test USDC titles and leases `account` holds. */
+export const tokensOf = async (contract: string, account: string) =>
+  inTestUsdc(
+    contract,
+    await paged(contract, "nft_tokens_for_owner", { account_id: account }),
+  );
 
 export async function proceedsOf(contract: string, account: string) {
   return BigInt(

@@ -1,5 +1,4 @@
 /** What a lot page shows, derived from a `LotView` with no further reads. */
-import { config } from "./config.ts";
 import { liveLease } from "./control.ts";
 import type { Issued, Item, Lot } from "./lot.gen.ts";
 import { isBurn } from "./lot.ts";
@@ -100,9 +99,7 @@ export type TitleCheck = {
 };
 
 export function titleChecks(view: LotView, frozen: boolean): TitleCheck[] {
-  const { lot, stream, token } = view;
-  const testUsdc =
-    token.address.toLowerCase() === config.evm.token.toLowerCase();
+  const { lot, stream } = view;
   return [
     stream.title.clean
       ? {
@@ -128,17 +125,11 @@ export function titleChecks(view: LotView, frozen: boolean): TitleCheck[] {
           plain: `MPC derives ${view.derivedAddress} for this lot's path, not this address.`,
           status: "fail",
         },
-    testUsdc
-      ? {
-          label: "Test USDC",
-          plain: "Tidepool test USDC on Base Sepolia. No financial value.",
-          status: "pass",
-        }
-      : {
-          label: "Older test token",
-          plain: `Holds ${token.symbol}, a test ERC-20 from an earlier run. No financial value.`,
-          status: "warn",
-        },
+    {
+      label: "Test USDC",
+      plain: "Tidepool test USDC on Base Sepolia. No financial value.",
+      status: "pass",
+    },
     lot.state === "Clean"
       ? {
           label: "Every issued nonce is consumed",

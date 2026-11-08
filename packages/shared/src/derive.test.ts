@@ -134,20 +134,6 @@ describe("title checks", () => {
     });
     expect(statuses(v).slice(0, 2)).toEqual(["fail", "fail"]);
   });
-
-  test("warn on a lot holding another test token", () => {
-    const v = view(lot(), {
-      token: {
-        address: "0x2a639c03a65c73d35e8091714a49182f67b7dbfc",
-        symbol: "QTT",
-        decimals: 18,
-      },
-    });
-    expect(titleChecks(v, false)[2]).toMatchObject({
-      label: "Older test token",
-      status: "warn",
-    });
-  });
 });
 
 test("history lists current state before what's already settled", () => {
