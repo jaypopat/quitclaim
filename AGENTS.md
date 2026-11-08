@@ -10,7 +10,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `packages/sdk` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/sdk/base.ts`.
 - `apps/web` is the frontend. `src/components/ui`, `src/components/dithercn`, `src/lib/dither` and `src/lib/utils.ts` are vendored byte-for-byte from the shadcn and dithercn registries: update them with `bunx shadcn@latest add <name> --overwrite`, never edit them (wrap instead), and keep them out of `bun fmt`.
 - `apps/keeper` is the keeper loop. It only finds pending lots and calls `settle`.
-- `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out.
+- `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out, seed.
 - Dependencies point one way: apps → `packages/sdk` → `packages/shared`. Apps never import each other.
 - `spikes/` is gitignored throwaway work. `spikes/notes/` holds the verified on-chain facts and tx links.
 
@@ -28,6 +28,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: seal or end a run-out lease, gas top-up, broadcast, prove, rescue. Every action is permissionless.
 - `bun run cash-out <lot-id> <owner-account> [amount in USDC]` swaps an Active, unleased lot's USDC for Tidepool test wNEAR (no value) through Tidepool's 1Click sandbox. Only the title owner may run it. It writes `reports/cash-out-*.json` before signing and never re-quotes or pays twice. After an unresolved swap, read that record instead of rerunning. It is not an e2e scenario, because it depends on Tidepool's servers.
+- `bun run seed` puts three fresh test-USDC lots on the market with `ALICE_ACCOUNT` as owner: one listed for sale, one offered for lease, one held. It spends 15 USDC of the funder's faucet drip.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 - Wallet-backed ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. The keyless heist uses public RPCs without it. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 

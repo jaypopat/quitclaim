@@ -26,6 +26,7 @@
     "test:heist": "bun --no-env-file apps/cli/src/heist-live.ts",
     "keeper": "bun apps/keeper/src/keeper.ts",
     "cash-out": "bun apps/cli/src/cash-out.ts",
+    "seed": "bun apps/cli/src/seed.ts",
     "freeze": "bun apps/cli/src/freeze.ts"
   },
   "devDependencies": {
