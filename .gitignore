@@ -39,3 +39,8 @@ spikes/
 
 # rust / near
 target/
+
+.quitclaim/
+
+test-results/
+playwright-report/

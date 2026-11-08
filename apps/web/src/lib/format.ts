@@ -9,8 +9,10 @@ const twoPlaces = new Intl.NumberFormat("en-US", {
 export const formatToken = (value: bigint, decimals: number) =>
   twoPlaces.format(Number(formatUnits(value, decimals)));
 
-export const formatNear = (yocto: bigint) =>
-  twoPlaces.format(Number(yoctoToNear(yocto)));
+export const formatNear = (yocto: bigint) => {
+  const value = yoctoToNear(yocto);
+  return value.includes(".") ? value : `${value}.00`;
+};
 
 export const formatPercent = (fraction: number) =>
   new Intl.NumberFormat("en-US", { style: "percent" }).format(fraction);

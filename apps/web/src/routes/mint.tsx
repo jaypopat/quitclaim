@@ -1,6 +1,8 @@
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { useWallet } from "@/lib/wallet.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
+import { toast } from "sonner";
+import { restoreWizard, saveWizard } from "@/lib/mint-recovery.ts";
 import { EmptyState } from "@/components/dithercn/empty-state";
 import { ProgressBar } from "@/components/dithercn/progress-bar";
 import { AddressStep } from "@/components/mint/address-step.tsx";
@@ -20,14 +22,46 @@ const STAGE: Record<Wizard["step"], number> = {
 };
 
 function Mint() {
-  const { signedAccountId: account, signIn } = useWalletSelector();
-  const [wizard, setWizard] = useState<Wizard>({ step: "address" });
+  const { signedAccountId: account } = useWallet();
+  return <MintSession key={account} />;
+}
+
+function MintSession() {
+  const { signedAccountId: account, signIn } = useWallet();
+  const [wizard, updateWizard] = useState<Wizard>({ step: "address" });
+  const setWizard: typeof updateWizard = (next) =>
+    updateWizard((previous) => {
+      const value = typeof next === "function" ? next(previous) : next;
+      if (account) saveWizard(account, value);
+      return value;
+    });
+  const [restoring, setRestoring] = useState(true);
+  useEffect(() => {
+    let active = true;
+    if (!account) {
+      setRestoring(false);
+      return;
+    }
+    void restoreWizard(account)
+      .then((value) => {
+        if (active) updateWizard(value);
+      })
+      .catch((error) => {
+        if (active) toast.error(`Mint recovery: ${error.message}`);
+      })
+      .finally(() => {
+        if (active) setRestoring(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [account]);
   const minted = useCallback(
     (lotId: number) =>
       setWizard((w) =>
         w.step === "mint" ? { step: "done", receiving: w.receiving, lotId } : w,
       ),
-    [],
+    [account],
   );
 
   if (!account)
@@ -43,6 +77,8 @@ function Mint() {
       </Page>
     );
 
+  if (restoring)
+    return <Page title="Restoring your mint…">Reading your saved stream.</Page>;
   const stage = STAGE[wizard.step];
   return (
     <Page title="Set up receiving address">

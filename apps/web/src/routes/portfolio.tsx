@@ -1,4 +1,4 @@
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { useWallet } from "@/lib/wallet.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { EmptyState } from "@/components/dithercn/empty-state";
 import { Page } from "@/components/page.tsx";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/portfolio")({ component: Portfolio });
 
 function Portfolio() {
-  const { signedAccountId: account, signIn } = useWalletSelector();
+  const { signedAccountId: account, signIn } = useWallet();
   return (
     <Page
       title="Portfolio"

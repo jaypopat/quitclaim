@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   plugins: [
     tailwindcss(),
-    // SPA mode: wallet-selector only runs in the browser. Server functions still run on the server.
+    // SPA mode: the wallet connector only runs in the browser. Server functions still run on the server.
     tanstackStart({ spa: { enabled: true } }),
     react(),
   ],

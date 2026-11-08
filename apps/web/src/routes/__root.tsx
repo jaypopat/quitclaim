@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import walletCss from "@near-wallet-selector/modal-ui/styles.css?url";
-import { WalletSelectorProvider } from "@near-wallet-selector/react-hook";
+import { WalletProvider } from "@/lib/wallet.tsx";
 import {
   ClientOnly,
   createRootRoute,
@@ -12,7 +11,6 @@ import { Layout } from "@/components/layout.tsx";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import css from "@/index.css?url";
-import { walletConfig } from "@/lib/wallet.ts";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -32,7 +30,6 @@ export const Route = createRootRoute({
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap",
       },
-      { rel: "stylesheet", href: walletCss },
       { rel: "stylesheet", href: css },
     ],
   }),
@@ -44,9 +41,9 @@ export const Route = createRootRoute({
 function Root() {
   return (
     <ClientOnly>
-      <WalletSelectorProvider config={walletConfig}>
+      <WalletProvider>
         <Layout />
-      </WalletSelectorProvider>
+      </WalletProvider>
     </ClientOnly>
   );
 }

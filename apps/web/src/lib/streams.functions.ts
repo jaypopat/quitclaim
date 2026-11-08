@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createStream, pull } from "@quitclaim/sdk/sablier.ts";
+import { pull } from "@quitclaim/sdk/sablier.ts";
+import { demoStreamOnce } from "@quitclaim/sdk/demo-stream.ts";
 import { fetchLotAddress } from "@quitclaim/shared/address.ts";
 import { getLot, holdsTestUsdc } from "@quitclaim/shared/lot-views.ts";
 import { getAddress } from "viem";
@@ -19,8 +20,7 @@ export const demoStream = createServerFn({ method: "POST" })
       LOT_CONTRACT,
       `${data.minter}/${data.name}`,
     );
-    const { tx } = await createStream(address, 5n * 10n ** 6n, 86_400);
-    return tx;
+    return demoStreamOnce(LOT_CONTRACT, getAddress(address));
   });
 
 /** Moves what has vested into the lot. Sablier lets anyone do this; the funder pays the gas and fee. */

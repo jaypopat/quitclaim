@@ -1,6 +1,6 @@
 /**
  * Puts three real test-USDC lots on the market: one listed for sale, one offered for lease, one held.
- * Each is a fresh 5 USDC stream over 30 days from the funder, whose faucet mints 100 an hour.
+ * Each is a fresh 20 USDC stream over 30 days from the funder, whose faucet mints 100 an hour.
  *
  *   bun run seed
  */
@@ -42,6 +42,7 @@ try {
       owner,
       minter,
       durationSec: 30 * 86_400,
+      total: 20n * 10n ** 6n,
     });
     if (offer) {
       must("seal", await seal(contract, owner, lot.id));

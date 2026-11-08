@@ -1,4 +1,6 @@
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { useSyncExternalStore } from "react";
+import { cashOutSnapshot, subscribeCashOut } from "@/lib/cash-out.ts";
+import { useWallet } from "@/lib/wallet.tsx";
 import { actions, type LotAction } from "@quitclaim/shared/actions.ts";
 import { floorFees } from "@quitclaim/shared/base.ts";
 import type { LotView } from "@quitclaim/shared/lot-view.ts";
@@ -6,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now.ts";
 import { formatNear } from "@/lib/format.ts";
 import { useSend } from "@/lib/use-send.ts";
+import { CashOut } from "./cash-out.tsx";
 import { ListForm, OfferLeaseForm, WithdrawForm } from "./action-forms.tsx";
 
 const LABEL: Record<LotAction["kind"], string> = {
@@ -23,20 +26,27 @@ const LABEL: Record<LotAction["kind"], string> = {
 
 /** Every action the viewer may take now, from the shared `actions` table. */
 export function LotActions({ view }: { view: LotView }) {
-  const { signedAccountId: account, signIn } = useWalletSelector();
+  const { signedAccountId: account, signIn } = useWallet();
   const now = useNow();
   const send = useSend();
+  const cashOut = useSyncExternalStore(
+    subscribeCashOut,
+    () => cashOutSnapshot(view.id),
+    () => null,
+  );
   const available = actions(view, account, now);
-  if (!available.length) return null;
-  if (!account)
-    return (
-      <Button onClick={signIn}>
-        Connect to {LABEL[available[0]!.kind].toLowerCase()}
-      </Button>
-    );
+  if (!available.length && !cashOut) return null;
+  if (!account) return <Button onClick={signIn}>Connect wallet</Button>;
 
   return (
     <div className="flex flex-col gap-2">
+      {account === view.lot.owner && !view.lot.lease && (
+        <CashOut
+          view={view}
+          action={available.find((a) => a.kind === "withdraw")}
+          send={send}
+        />
+      )}
       {available.map((action) => {
         switch (action.kind) {
           case "list":
@@ -44,6 +54,8 @@ export function LotActions({ view }: { view: LotView }) {
           case "offer-lease":
             return <OfferLeaseForm key="lease" action={action} send={send} />;
           case "withdraw":
+            if (cashOut && account === view.lot.owner && !view.lot.lease)
+              return null;
             return (
               <WithdrawForm
                 key="withdraw"

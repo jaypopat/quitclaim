@@ -36,7 +36,7 @@ export function MintStep({
   const result = minted.parse(send.data?.value);
   const { data: lotId } = useQuery({
     ...mintedLotQuery(owner, receiving.path),
-    enabled: sent && result !== null,
+    enabled: true,
   });
   const id = result?.id ?? lotId;
   useEffect(() => {

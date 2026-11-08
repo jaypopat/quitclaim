@@ -24,11 +24,11 @@ import {
 } from "viem";
 import { fileURLToPath } from "node:url";
 import { Glob } from "bun";
-import type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";
+import type { GetExecutionStatusResponse } from "@quitclaim/shared/intents.ts";
 import { config, nearView } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
 import { env } from "@quitclaim/sdk/env.ts";
-import * as intents from "./intents.ts";
+import * as intents from "@quitclaim/shared/intents.ts";
 import { settle, type SettleStep } from "@quitclaim/sdk/settle.ts";
 import { logger } from "@quitclaim/sdk/logger.ts";
 import { mustLot, pullSource, requestTransfer } from "@quitclaim/sdk/lot.ts";

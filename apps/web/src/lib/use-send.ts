@@ -1,4 +1,4 @@
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { useWallet } from "@/lib/wallet.tsx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ContractCall } from "@quitclaim/shared/calls.ts";
 import { nearTxUrl } from "@quitclaim/shared/near.ts";
@@ -23,7 +23,7 @@ const outcome = z
 
 /** Builds a call (some need live Base fees first), sends it through the wallet, then re-reads every chain query. */
 export function useSend() {
-  const { callFunction } = useWalletSelector();
+  const { callFunction } = useWallet();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (build: () => ContractCall | Promise<ContractCall>) => {

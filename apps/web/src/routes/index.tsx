@@ -75,7 +75,7 @@ const HEIST_STEPS = [
 function Landing() {
   const { data: ids } = useQuery(lotIdsQuery);
   const { data: frozen } = useQuery(frozenQuery);
-  const heroId = ids?.at(-1);
+  const heroId = ids?.at(0);
   return (
     <main>
       <section className="grid min-h-[calc(100dvh-4rem)] items-center gap-12 px-[clamp(20px,4vw,64px)] py-16 lg:grid-cols-2">
@@ -125,56 +125,52 @@ function Landing() {
         )}
       </section>
 
-      <Section title="Locked tokens can't be sold. Wallets can't be sold safely. NEAR can.">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Panel
-            eyebrow="01 · THE STREAM IS STUCK"
-            title="Vesting streams are non-transferable."
-          >
-            An employer pays you over two years. The stream is bound to your
-            address, so you can't sell the position or borrow against it.
-          </Panel>
-          <Panel
-            eyebrow="02 · KEYS LEAK"
-            title="Selling the private key doesn't work."
-          >
-            The seller can keep a copy, or sign a withdrawal now and send it
-            after the sale. The buyer can never prove they didn't.
-          </Panel>
-          <Panel
-            eyebrow="QUITCLAIM"
-            title="Nobody holds a key. The locks change on sale."
-            accent
-          >
-            NEAR's MPC network signs for the address only when the title holder
-            asks. Before a sale, the seller's last signature is used up on Base,
-            and NEAR checks that it was.
-          </Panel>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Panel
-            eyebrow="1 · CHAIN SIGNATURES"
-            title="The NFT is the only key."
-          >
-            The address on Base is derived from the lot contract. MPC signs for
-            it only when the contract asks, and the contract asks only for the
-            title holder.
-          </Panel>
-          <Panel
-            eyebrow="2 · NONCE BURN"
-            title="Change the locks before the sale."
-          >
-            Base runs each address's transactions in order. The contract signs
-            an empty transaction in the seller's next slot, so anything signed
-            for that slot can never land.
-          </Panel>
-          <Panel
-            eyebrow="3 · FOREIGN TX VERIFICATION"
-            title="NEAR sees it land, then the NFT moves."
-          >
-            MPC confirms on NEAR that the burn is final on Base. Until then the
-            title can't be listed, sold or transferred.
-          </Panel>
+      <Section title="A stream stays put. Its title can move.">
+        <div className="grid gap-12 lg:grid-cols-[1fr_2fr]">
+          <div className="flex flex-col gap-6">
+            <p className="text-xl leading-relaxed">
+              Your employer's stream keeps paying the same address. Sell the
+              right to its future payouts without sharing a private key.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              A copied key cannot be taken back. Quitclaim gives the buyer a
+              verifiable handover: the seller's outstanding signatures must be
+              used up before the title moves.
+            </p>
+            <Link to="/mint" className="text-sm text-primary">
+              Set up your receiving address →
+            </Link>
+          </div>
+          <ol className="border-t">
+            {[
+              [
+                "01",
+                "One address. One title.",
+                "A non-transferable Sablier stream pays a Base address. Its NFT on NEAR decides who may ask MPC to sign a withdrawal.",
+              ],
+              [
+                "02",
+                "Use up the seller's signatures.",
+                "Before a sale, signing stops. A burn consumes the outstanding nonce on Base, making saved withdrawals unusable.",
+              ],
+              [
+                "03",
+                "Prove it, then hand it over.",
+                "MPC attests that the nonce was consumed. Only then can the buyer receive the title and control the same address.",
+              ],
+            ].map(([number, title, description]) => (
+              <li
+                key={number}
+                className="grid grid-cols-[3rem_1fr] gap-4 border-b py-6 sm:grid-cols-[3rem_1fr_1fr]"
+              >
+                <span className="font-mono text-xs text-primary">{number}</span>
+                <h3 className="text-xl font-medium">{title}</h3>
+                <p className="col-start-2 text-sm text-muted-foreground sm:col-start-auto">
+                  {description}
+                </p>
+              </li>
+            ))}
+          </ol>
         </div>
       </Section>
 
@@ -286,7 +282,9 @@ function Landing() {
           </span>
           NEAR's MPC network signs and attests honestly. The lot contract is
           {frozen ? " frozen" : " frozen at the end"}. Base transactions are
-          final once confirmed.
+          final at the contract's selected finality. Cash-out also trusts
+          Tidepool's custodial deposit relayer until it delivers test wNEAR or
+          refunds the lot.
         </p>
       </Section>
 

@@ -1,4 +1,4 @@
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { useWallet } from "@/lib/wallet.tsx";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function WalletButton() {
-  const { signedAccountId, signIn, signOut } = useWalletSelector();
+  const { signedAccountId, signIn, signOut } = useWallet();
   if (!signedAccountId) return <Button onClick={signIn}>Connect wallet</Button>;
   return (
     <DropdownMenu>

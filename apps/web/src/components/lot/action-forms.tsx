@@ -1,6 +1,8 @@
 import type { LotAction } from "@quitclaim/shared/actions.ts";
 import { estimateTransferGas, floorFees } from "@quitclaim/shared/base.ts";
 import type { LotView } from "@quitclaim/shared/lot-view.ts";
+import { useQuery } from "@tanstack/react-query";
+import { leaseLeftQuery } from "@/lib/queries.ts";
 import { getAddress } from "viem";
 import { z } from "zod";
 import { useAppForm } from "@/lib/form.tsx";
@@ -87,9 +89,25 @@ export function WithdrawForm({
   send: Send;
 }) {
   const { token, address, base } = view;
+  const budget = useQuery({
+    ...leaseLeftQuery(view.id),
+    enabled: !!view.lot.lease,
+    refetchInterval: 4_000,
+  });
+  const prior = view.lot.issued.reduce(
+    (max, issued) =>
+      issued.nonce === view.lot.next_nonce && typeof issued.kind === "object"
+        ? BigInt(issued.kind.Transfer.amount) > max
+          ? BigInt(issued.kind.Transfer.amount)
+          : max
+        : max,
+    0n,
+  );
+  const allowed = view.lot.lease ? (budget.data ?? 0n) + prior : base.held;
+  const maximum = allowed < base.held ? allowed : base.held;
   const withdrawal = z.object({
     to: evmAddress,
-    amount: tokenAmount(token.decimals, base.held),
+    amount: tokenAmount(token.decimals, maximum),
   });
   const form = useAppForm({
     defaultValues: { to: "", amount: "" },
@@ -113,7 +131,7 @@ export function WithdrawForm({
   });
   return (
     <ActionDialog
-      label="Withdraw"
+      label="Send to a Base address"
       description={`MPC signs a ${token.symbol} transfer from the lot address. The keeper broadcasts it and proves it landed.`}
       pending={send.isPending}
       onSubmit={form.handleSubmit}

@@ -47,10 +47,12 @@ export function OfferBox({
 }) {
   const { label, value, note } = summary(offer, lot);
   return (
-    <Card className="sticky top-24">
-      <CardContent className="flex flex-col gap-2">
+    <Card className="sticky top-24 min-w-0">
+      <CardContent className="flex min-w-0 flex-col gap-2">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-3xl font-medium tracking-tight break-all">
+        <span
+          className={`font-medium tracking-tight [overflow-wrap:anywhere] ${offer.kind === "none" ? "font-mono text-lg" : "text-3xl"}`}
+        >
           {value}
         </span>
         <span className="text-sm text-muted-foreground">{note}</span>
