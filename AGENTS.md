@@ -20,7 +20,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run verify` runs everything: ABI check, typecheck, TS tests, lot tests, Sandbox tests. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.
-- `bun run dev` serves the web app.
+- `bun run dev` serves the web app: Vite with HMR and TanStack Start in SPA mode on port 3000, run under Bun with the root `.env`. File routes live in `apps/web/src/routes`; `routeTree.gen.ts` is generated. Server-only code (the funder key) runs in `createServerFn` handlers and never reaches the client bundle.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
 - `bun run e2e [minting|handover|recovery|lease]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `apps/cli/src/e2e/`.
@@ -33,7 +33,7 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 
 ## Conventions
 
-- Bun only: `bun test`, `bun check`, `bunx`, `Bun.serve` with HTML imports (no Vite, Express or dotenv; Bun loads `.env`).
+- Bun is the runtime, package manager and test runner: `bun test`, `bun check`, `bunx` (no Express or dotenv; Bun loads `.env`). The one exception is `apps/web`, which builds and serves with Vite + TanStack Start (run through Bun).
 - Don't name a root script `check`, because it shadows `bun check`.
 - No AI co-author trailers or attribution in commits or PRs.
 

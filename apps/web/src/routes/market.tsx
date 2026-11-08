@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import { EmptyState } from "@/components/dithercn/empty-state";
 import { LotCard } from "@/components/lot-card.tsx";
 import { Page } from "@/components/page.tsx";
 import { Skeleton } from "@/components/ui/skeleton";
 import { lotIdsQuery } from "@/lib/queries.ts";
 
-export function Market() {
+export const Route = createFileRoute("/market")({ component: Market });
+
+function Market() {
   const { data: ids, error } = useQuery(lotIdsQuery);
   return (
     <Page

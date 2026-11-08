@@ -1,6 +1,9 @@
 import { Dithering } from "@paper-design/shaders-react";
+import { createFileRoute } from "@tanstack/react-router";
 
-export function Landing() {
+export const Route = createFileRoute("/")({ component: Landing });
+
+function Landing() {
   return (
     <main className="grid min-h-[calc(100dvh-4rem)] items-center gap-12 px-[clamp(20px,4vw,64px)] md:grid-cols-2">
       <h1 className="text-7xl font-medium tracking-tight">

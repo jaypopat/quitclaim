@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-/** Inlined at bundle time from `.env` (see bunfig.toml `[serve.static] env`). */
+/** From `.env` (see `.env.example`); Vite inlines `VITE_*` into the browser bundle. */
 export const LOT_CONTRACT = z
   .string()
-  .min(2, "BUN_PUBLIC_LOT_CONTRACT is not set (see .env.example)")
-  .parse(process.env.BUN_PUBLIC_LOT_CONTRACT);
+  .min(2, "VITE_LOT_CONTRACT is not set (see .env.example)")
+  .parse(import.meta.env.VITE_LOT_CONTRACT);

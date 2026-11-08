@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { z } from "zod";
 import {
   history,
   nonceSlots,
@@ -20,8 +21,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now.ts";
 import { frozenQuery, lotQuery } from "@/lib/queries.ts";
 
-export function LotPage() {
-  const { id } = useParams({ from: "/lot/$id" });
+const lotParams = z.object({ id: z.coerce.number().int().nonnegative() });
+
+export const Route = createFileRoute("/lot/$id")({
+  params: {
+    parse: (raw) => lotParams.parse(raw),
+    stringify: ({ id }) => ({ id: String(id) }),
+  },
+  component: LotPage,
+});
+
+function LotPage() {
+  const { id } = Route.useParams();
   const { data: view, error } = useQuery(lotQuery(id));
   const { data: frozen = false } = useQuery(frozenQuery);
   const now = useNow();
