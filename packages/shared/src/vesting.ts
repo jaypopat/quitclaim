@@ -4,7 +4,9 @@ import type { Schedule } from "./lot.gen.ts";
  * Sablier Lockup v4 `LockupMath.calculateStreamedAmountLL` at Unix second `t`, as the contract's
  * `Schedule::vested` computes it, so a lease budget shown here matches what the contract allows.
  */
-export function vested(schedule: Schedule, t: number): bigint {
+export function vested(schedule: Schedule, at: number): bigint {
+  // Block timestamps are whole seconds; a wall-clock time vests what its second does.
+  const t = Math.floor(at);
   const deposit = BigInt(schedule.deposit);
   if (schedule.start > t) return 0n;
   if (schedule.cliff > t) return BigInt(schedule.start_unlock);

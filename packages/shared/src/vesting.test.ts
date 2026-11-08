@@ -104,3 +104,15 @@ test("vests only whole granularity units, and nothing before the start", () => {
   expect(vested(daily, 3 * 86_400 + 5_000)).toBe(300n);
   expect(vested({ ...daily, start: 10 }, 9)).toBe(0n);
 });
+
+test("a wall-clock time between seconds vests what its whole second does", () => {
+  const s = schedule({
+    deposit: 1_000n * unit,
+    start: 100,
+    cliff: 0,
+    end: 1_100,
+    granularity: 1,
+  });
+  expect(vested(s, 101.47000002861023)).toBe(vested(s, 101));
+  expect(vested(s, 101.47000002861023)).toBe(1n * unit);
+});
