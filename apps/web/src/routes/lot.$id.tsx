@@ -9,10 +9,13 @@ import {
   titleChecks,
 } from "@quitclaim/shared/derive.ts";
 import { baseAddressUrl } from "@quitclaim/shared/base.ts";
+import { settleProgress } from "@quitclaim/shared/settle-progress.ts";
 import { HistoryList } from "@/components/lot/history-list.tsx";
+import { LotActions } from "@/components/lot/lot-actions.tsx";
 import { NonceStrip } from "@/components/lot/nonce-strip.tsx";
 import { OfferBox } from "@/components/lot/offer-box.tsx";
 import { PositionStats } from "@/components/lot/position-stats.tsx";
+import { SettleStatus } from "@/components/lot/settle-status.tsx";
 import { TitleChecks } from "@/components/lot/title-checks.tsx";
 import { VestingChart } from "@/components/lot/vesting-chart.tsx";
 import { LotField } from "@/components/lot-field.tsx";
@@ -104,7 +107,10 @@ function LotPage() {
           />
         </div>
         <div>
-          <OfferBox offer={current} lot={view.lot} />
+          <OfferBox offer={current} lot={view.lot}>
+            <SettleStatus settle={settleProgress(view)} />
+            <LotActions view={view} />
+          </OfferBox>
         </div>
       </div>
       <p className="border p-4 text-sm text-muted-foreground">

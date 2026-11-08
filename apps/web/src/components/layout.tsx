@@ -1,5 +1,6 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/theme-toggle.tsx";
+import { WalletButton } from "@/components/wallet-button.tsx";
 
 const nav = [
   { to: "/market", label: "Market" },
@@ -33,6 +34,7 @@ export function Layout() {
               testnet
             </span>
             <ThemeToggle />
+            <WalletButton />
           </div>
         </div>
       </header>

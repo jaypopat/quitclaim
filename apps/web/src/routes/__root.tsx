@@ -1,10 +1,18 @@
 import type { ReactNode } from "react";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import walletCss from "@near-wallet-selector/modal-ui/styles.css?url";
+import { WalletSelectorProvider } from "@near-wallet-selector/react-hook";
+import {
+  ClientOnly,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
 import { ThemeProvider } from "next-themes";
 import { Layout } from "@/components/layout.tsx";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import css from "@/index.css?url";
+import { walletConfig } from "@/lib/wallet.ts";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -24,12 +32,24 @@ export const Route = createRootRoute({
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap",
       },
+      { rel: "stylesheet", href: walletCss },
       { rel: "stylesheet", href: css },
     ],
   }),
   shellComponent: Shell,
-  component: Layout,
+  component: Root,
 });
+
+/** wallet-selector reads browser storage as it renders, so the app renders only in the browser. */
+function Root() {
+  return (
+    <ClientOnly>
+      <WalletSelectorProvider config={walletConfig}>
+        <Layout />
+      </WalletSelectorProvider>
+    </ClientOnly>
+  );
+}
 
 function Shell({ children }: { children: ReactNode }) {
   return (
