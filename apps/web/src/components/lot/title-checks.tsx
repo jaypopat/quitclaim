@@ -7,12 +7,18 @@ const ICONS = {
   fail: <X className="size-4 text-destructive" />,
 };
 
-export function TitleChecks({ checks }: { checks: TitleCheck[] }) {
+export function TitleChecks({
+  checks,
+  title = "Title check",
+}: {
+  checks: TitleCheck[];
+  title?: string;
+}) {
   const passed = checks.filter((c) => c.status === "pass").length;
   return (
     <section className="flex flex-col">
       <header className="flex items-baseline justify-between border-b pb-3">
-        <h2 className="text-lg font-medium">Title check</h2>
+        <h2 className="text-lg font-medium">{title}</h2>
         <span className="font-mono text-xs text-muted-foreground">
           {passed}/{checks.length}
         </span>

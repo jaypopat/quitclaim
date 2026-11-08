@@ -109,6 +109,13 @@ function parseToken(t: z.infer<typeof tokens>[number]): HeldToken {
   };
 }
 
+/** The Base finality MPC waits for before it attests a log for this contract. */
+export async function contractFinality(contract: string) {
+  return z
+    .object({ finality: z.enum(["Latest", "Safe", "Finalized"]) })
+    .parse(await nearView(contract, "get_config", {})).finality;
+}
+
 export async function getLot(contract: string, id: number) {
   return lot.nullable().parse(await nearView(contract, "get_lot", { id }));
 }
@@ -167,6 +174,15 @@ export async function leaseLeft(contract: string, id: number) {
     await nearView(contract, "lease_budget", { id }),
   );
   return BigInt(allowed) - BigInt(committed);
+}
+
+/** The lot `owner` holds the title to at `path`, once its mint has verified. */
+export async function mintedLot(contract: string, owner: string, path: string) {
+  const titles = (await tokensOf(contract, owner)).filter(
+    (t) => t.item === "Title",
+  );
+  const lots = await Promise.all(titles.map((t) => getLot(contract, t.lotId)));
+  return titles.find((_, i) => lots[i]?.path === path)?.lotId ?? null;
 }
 
 export async function proceedsOf(contract: string, account: string) {

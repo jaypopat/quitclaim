@@ -7,6 +7,7 @@ import {
 } from "viem";
 import { baseSepolia } from "viem/chains";
 import { config } from "./config.ts";
+import type { Finality } from "./lot.gen.ts";
 
 /** Reads in the same tick share one Multicall3 call. */
 export const baseClient = createPublicClient({
@@ -18,6 +19,12 @@ export const baseClient = createPublicClient({
 export const baseTxUrl = (hash: string) => `${config.evm.explorer}/tx/${hash}`;
 export const baseAddressUrl = (address: string) =>
   `${config.evm.explorer}/address/${address}`;
+
+/** Whether Base's head at the lot contract's finality has reached `block`, as MPC needs before it attests a log. */
+export async function reached(block: bigint, finality: Finality) {
+  const blockTag = finality.toLowerCase() as Lowercase<Finality>;
+  return (await baseClient.getBlock({ blockTag })).number >= block;
+}
 
 /** Floor fees for a new tx: 2x the current base fee plus a 1 Mwei minimum tip. */
 export async function floorFees() {
@@ -44,6 +51,16 @@ export async function estimateTransferGas(
     ((await baseClient.estimateGas({ account: lot, to: token, data })) * 13n) /
     10n
   );
+}
+
+export async function tokenInfo(token: Address) {
+  const read = <F extends "symbol" | "decimals">(functionName: F) =>
+    baseClient.readContract({ address: token, abi: erc20Abi, functionName });
+  const [symbol, decimals] = await Promise.all([
+    read("symbol"),
+    read("decimals"),
+  ]);
+  return { address: token, symbol, decimals };
 }
 
 export function tokenBalance(token: Address, holder: Address) {

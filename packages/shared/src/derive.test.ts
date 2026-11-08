@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { history, nonceSlots, offer, position, titleChecks } from "./derive.ts";
-import { issued, lot, T0, view } from "./testing.ts";
+import {
+  history,
+  nonceSlots,
+  offer,
+  position,
+  streamChecks,
+  titleChecks,
+} from "./derive.ts";
+import type { StreamCreation } from "./sablier.ts";
+import { ADDRESS, issued, lot, T0, TOKEN, view } from "./testing.ts";
 
 const NOW = T0 * 1000;
 
@@ -154,5 +162,49 @@ test("history lists current state before what's already settled", () => {
   expect(history(l).at(-1)).toEqual({
     kind: "stream-started",
     atMs: T0 * 1000,
+  });
+});
+
+describe("stream checks before minting", () => {
+  const stream = (overrides: Partial<StreamCreation> = {}): StreamCreation => ({
+    id: 7n,
+    block: 1n,
+    recipient: ADDRESS,
+    token: TOKEN,
+    deposit: 5_000_000n,
+    startSec: T0,
+    endSec: T0 + 86_400,
+    cancelable: false,
+    transferable: false,
+    log: {
+      removed: false,
+      log_index: 0,
+      transaction_index: 0,
+      transaction_hash: "aa",
+      block_hash: "bb",
+      block_number: 1,
+      address: "cc",
+      data: "0x",
+      topics: [],
+    },
+    ...overrides,
+  });
+  const statuses = (s: StreamCreation) =>
+    streamChecks(s, ADDRESS).map((c) => c.status);
+
+  test("pass for a locked test USDC stream paying the receiving address", () => {
+    expect(statuses(stream())).toEqual(["pass", "pass", "pass"]);
+  });
+
+  test("fail when it pays elsewhere, can be cancelled or moved, or is another token", () => {
+    expect(
+      statuses(
+        stream({
+          recipient: "0x00000000000000000000000000000000000000Bb",
+          transferable: true,
+          token: "0x2a639c03a65c73d35e8091714a49182f67b7dbfc",
+        }),
+      ),
+    ).toEqual(["fail", "fail", "fail"]);
   });
 });

@@ -10,7 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { config, type Finality } from "@quitclaim/shared";
-import { baseClient } from "@quitclaim/shared/base.ts";
+import { baseClient, reached } from "@quitclaim/shared/base.ts";
 import { env } from "./env.ts";
 
 const oracleAbi = [
@@ -87,10 +87,5 @@ export async function receipt(hash: Hex): Promise<TransactionReceipt | null> {
 
 /** Resolves once the chain head at `finality` has reached `block`, so a proof won't time out at MPC. */
 export async function waitFinality(block: bigint, finality: Finality) {
-  const blockTag = finality.toLowerCase() as Lowercase<Finality>;
-  for (;;) {
-    const head = await baseClient.getBlock({ blockTag });
-    if (head.number >= block) return head.number;
-    await Bun.sleep(15_000);
-  }
+  while (!(await reached(block, finality))) await Bun.sleep(15_000);
 }

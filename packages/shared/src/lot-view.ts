@@ -1,6 +1,6 @@
-import { erc20Abi, getAddress, type Address } from "viem";
+import { getAddress, type Address } from "viem";
 import { fetchLotAddress } from "./address.ts";
-import { baseClient, tokenBalance } from "./base.ts";
+import { baseClient, tokenBalance, tokenInfo } from "./base.ts";
 import type { Lot } from "./lot.gen.ts";
 import { getLot, holdsTestUsdc } from "./lot-views.ts";
 import { titleSearch, withdrawn, type TitleSearch } from "./sablier.ts";
@@ -35,32 +35,21 @@ export async function fetchLotView(
   const address = getAddress(lot.address);
   const token = getAddress(lot.token);
   const streamId = BigInt(lot.source.id);
-  const read = <F extends "symbol" | "decimals">(functionName: F) =>
-    baseClient.readContract({ address: token, abi: erc20Abi, functionName });
-  const [
-    held,
-    symbol,
-    decimals,
-    nonce,
-    pendingNonce,
-    pulled,
-    title,
-    derivedAddress,
-  ] = await Promise.all([
-    tokenBalance(token, address),
-    read("symbol"),
-    read("decimals"),
-    baseClient.getTransactionCount({ address, blockTag: "latest" }),
-    baseClient.getTransactionCount({ address, blockTag: "pending" }),
-    withdrawn(streamId),
-    titleSearch(streamId, address, token),
-    fetchLotAddress(contract, lot.path),
-  ]);
+  const [held, info, nonce, pendingNonce, pulled, title, derivedAddress] =
+    await Promise.all([
+      tokenBalance(token, address),
+      tokenInfo(token),
+      baseClient.getTransactionCount({ address, blockTag: "latest" }),
+      baseClient.getTransactionCount({ address, blockTag: "pending" }),
+      withdrawn(streamId),
+      titleSearch(streamId, address, token),
+      fetchLotAddress(contract, lot.path),
+    ]);
   return {
     id,
     lot,
     address,
-    token: { address: token, symbol, decimals },
+    token: info,
     base: { held, nonce, pendingNonce },
     stream: { withdrawn: pulled, title },
     derivedAddress: getAddress(derivedAddress),

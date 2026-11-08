@@ -3,7 +3,13 @@
  * `sablier` package. A lot's value comes from a stream whose recipient is the lot address. These
  * are the reads anyone can make; the funder's writes live in the sdk.
  */
-import type { Address, Log } from "viem";
+import {
+  parseEventLogs,
+  type Address,
+  type Hex,
+  type Log,
+  type TransactionReceipt,
+} from "viem";
 import { sablier } from "sablier";
 import { release } from "sablier/evm/releases/lockup/v4.0";
 import { baseClient } from "./base.ts";
@@ -39,6 +45,49 @@ export function toCreationLog(log: Log): CreationLog {
     data: log.data,
     topics: log.topics.map((t) => bare(t!)),
   };
+}
+
+/** A linear stream as its creation transaction set it up, with the log `mint_proven` takes. */
+export type StreamCreation = {
+  id: bigint;
+  block: bigint;
+  recipient: Address;
+  token: Address;
+  deposit: bigint;
+  startSec: number;
+  endSec: number;
+  cancelable: boolean;
+  transferable: boolean;
+  log: CreationLog;
+};
+
+export function streamCreated(receipt: TransactionReceipt): StreamCreation {
+  const [created] = parseEventLogs({
+    abi: lockupAbi,
+    logs: receipt.logs,
+    eventName: "CreateLockupLinearStream",
+  }).filter((l) => l.address.toLowerCase() === LOCKUP.toLowerCase());
+  if (!created)
+    throw new Error(
+      `${receipt.transactionHash} did not create a Sablier linear stream`,
+    );
+  const { streamId, commonParams: p } = created.args;
+  return {
+    id: streamId,
+    block: receipt.blockNumber,
+    recipient: p.recipient,
+    token: p.token,
+    deposit: p.depositAmount,
+    startSec: p.timestamps.start,
+    endSec: p.timestamps.end,
+    cancelable: p.cancelable,
+    transferable: p.transferable,
+    log: toCreationLog(created),
+  };
+}
+
+export async function fetchStreamCreation(tx: Hex) {
+  return streamCreated(await baseClient.getTransactionReceipt({ hash: tx }));
 }
 
 export type TitleSearch = {

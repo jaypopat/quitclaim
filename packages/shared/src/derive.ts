@@ -1,8 +1,11 @@
 /** What a lot page shows, derived from a `LotView` with no further reads. */
+import type { Address } from "viem";
+import { config } from "./config.ts";
 import { liveLease } from "./control.ts";
 import type { Issued, Item, Lot } from "./lot.gen.ts";
 import { isBurn } from "./lot.ts";
 import type { LotView } from "./lot-view.ts";
+import type { StreamCreation } from "./sablier.ts";
 import { vested } from "./vesting.ts";
 
 export type Position = {
@@ -155,6 +158,33 @@ export function titleChecks(view: LotView, frozen: boolean): TitleCheck[] {
             "This testnet deploy can still be upgraded. The final one will not.",
           status: "warn",
         },
+  ];
+}
+
+/** What `mint_proven` will check of a stream before it attests it, shown before the minter pays. */
+export function streamChecks(
+  stream: StreamCreation,
+  address: Address,
+): TitleCheck[] {
+  const pass = (ok: boolean) => (ok ? "pass" : "fail");
+  return [
+    {
+      label: "Recipient matches your address",
+      plain: `The stream pays ${stream.recipient}.`,
+      status: pass(stream.recipient.toLowerCase() === address.toLowerCase()),
+    },
+    {
+      label: "Non-cancelable and non-transferable",
+      plain: "Nobody can stop the stream or move it to another recipient.",
+      status: pass(!stream.cancelable && !stream.transferable),
+    },
+    {
+      label: "Test USDC",
+      plain: "Tidepool test USDC on Base Sepolia, the token every lot holds.",
+      status: pass(
+        stream.token.toLowerCase() === config.evm.token.toLowerCase(),
+      ),
+    },
   ];
 }
 

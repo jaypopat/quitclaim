@@ -2,6 +2,10 @@ import { useWalletSelector } from "@near-wallet-selector/react-hook";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ContractCall } from "@quitclaim/shared/calls.ts";
 import { nearTxUrl } from "@quitclaim/shared/near.ts";
+import {
+  getTransactionLastResult,
+  type FinalExecutionOutcome,
+} from "near-api-js";
 import { toast } from "sonner";
 import { z } from "zod";
 import { LOT_CONTRACT } from "./contract.ts";
@@ -24,19 +28,21 @@ export function useSend() {
   return useMutation({
     mutationFn: async (build: () => ContractCall | Promise<ContractCall>) => {
       const call = await build();
-      const sent = outcome.parse(
-        await callFunction({
-          ...call,
-          contractId: LOT_CONTRACT,
-          args: { ...call.args },
-        }),
-      );
+      const raw = await callFunction({
+        ...call,
+        contractId: LOT_CONTRACT,
+        args: { ...call.args },
+      });
+      const sent = outcome.parse(raw);
       const url = sent && nearTxUrl(sent.transaction.hash);
       if (sent && typeof sent.status === "object" && sent.status.Failure)
         throw new Error(
           `${call.method} failed: ${JSON.stringify(sent.status.Failure)} ${url}`,
         );
-      return { method: call.method, url };
+      // What the call (or the promise it returned) resolved to, such as `mint_proven`'s minted lot.
+      const value =
+        sent && getTransactionLastResult(raw as FinalExecutionOutcome);
+      return { method: call.method, url, value };
     },
     onSuccess: ({ method, url }) => {
       toast.success(

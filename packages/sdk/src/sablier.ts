@@ -3,22 +3,10 @@
  * Quitclaim never signs calls to Sablier: anyone pulls the stream into the lot, and the lot only
  * signs ERC-20 transfers of the token fixed at mint.
  */
-import {
-  erc20Abi,
-  formatUnits,
-  parseAbi,
-  parseEventLogs,
-  type Address,
-  type Hex,
-} from "viem";
+import { erc20Abi, formatUnits, parseAbi, type Address, type Hex } from "viem";
 import { config } from "@quitclaim/shared";
 import { baseClient, tokenBalance } from "@quitclaim/shared/base.ts";
-import {
-  LOCKUP,
-  lockup,
-  lockupAbi,
-  toCreationLog,
-} from "@quitclaim/shared/sablier.ts";
+import { LOCKUP, lockup, streamCreated } from "@quitclaim/shared/sablier.ts";
 import { funderAccount, wallet } from "./base.ts";
 
 const faucetAbi = parseAbi(["function faucet()"]);
@@ -75,18 +63,7 @@ export async function createStream(
   const receipt = await baseClient.waitForTransactionReceipt({ hash: tx });
   if (receipt.status !== "success")
     throw new Error(`stream creation reverted: ${tx}`);
-  const [created] = parseEventLogs({
-    abi: lockupAbi,
-    logs: receipt.logs,
-    eventName: "CreateLockupLinearStream",
-  }).filter((l) => l.address.toLowerCase() === LOCKUP.toLowerCase());
-  if (!created) throw new Error(`no CreateLockupLinearStream log in ${tx}`);
-  return {
-    id: created.args.streamId,
-    tx,
-    block: receipt.blockNumber,
-    log: toCreationLog(created),
-  };
+  return { ...streamCreated(receipt), tx };
 }
 
 /** Permissionless: moves whatever has vested into the lot. Returns null when nothing is withdrawable. */

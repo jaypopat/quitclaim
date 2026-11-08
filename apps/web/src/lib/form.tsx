@@ -1,14 +1,20 @@
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
 import type { ComponentProps } from "react";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
 
 function TextField({
   label,
+  description,
   ...props
-}: { label: string } & ComponentProps<typeof Input>) {
+}: { label: string; description?: string } & ComponentProps<typeof Input>) {
   const field = useFieldContext<string>();
   const invalid = field.state.meta.isTouched && !field.state.meta.isValid;
   return (
@@ -23,6 +29,7 @@ function TextField({
         aria-invalid={invalid}
         {...props}
       />
+      {description && <FieldDescription>{description}</FieldDescription>}
       {invalid && <FieldError errors={field.state.meta.errors} />}
     </Field>
   );

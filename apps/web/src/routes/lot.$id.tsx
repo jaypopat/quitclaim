@@ -15,6 +15,7 @@ import { LotActions } from "@/components/lot/lot-actions.tsx";
 import { NonceStrip } from "@/components/lot/nonce-strip.tsx";
 import { OfferBox } from "@/components/lot/offer-box.tsx";
 import { PositionStats } from "@/components/lot/position-stats.tsx";
+import { PullButton } from "@/components/lot/pull-button.tsx";
 import { SettleStatus } from "@/components/lot/settle-status.tsx";
 import { TitleChecks } from "@/components/lot/title-checks.tsx";
 import { VestingChart } from "@/components/lot/vesting-chart.tsx";
@@ -22,6 +23,7 @@ import { LotField } from "@/components/lot-field.tsx";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now.ts";
+import { formatToken } from "@/lib/format";
 import { frozenQuery, lotQuery } from "@/lib/queries.ts";
 
 const lotParams = z.object({ id: z.coerce.number().int().nonnegative() });
@@ -55,6 +57,7 @@ function LotPage() {
     );
 
   const current = offer(view.lot, now);
+  const pos = position(view, now / 1000);
   const schedule = view.lot.source.schedule;
   return (
     <main className="flex flex-col gap-10 px-[clamp(20px,4vw,64px)] py-8">
@@ -100,7 +103,7 @@ function LotPage() {
             symbol={view.token.symbol}
           />
           <PositionStats
-            position={position(view, now / 1000)}
+            position={pos}
             token={view.token}
             withdrawn={view.stream.withdrawn}
             endSec={schedule.end}
@@ -110,6 +113,12 @@ function LotPage() {
           <OfferBox offer={current} lot={view.lot}>
             <SettleStatus settle={settleProgress(view)} />
             <LotActions view={view} />
+            {pos.claimable > 0n && (
+              <PullButton
+                id={id}
+                label={`Pull ${formatToken(pos.claimable, view.token.decimals)} ${view.token.symbol} from the stream`}
+              />
+            )}
           </OfferBox>
         </div>
       </div>
