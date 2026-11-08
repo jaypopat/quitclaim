@@ -4,6 +4,7 @@ node_modules
 # output
 out
 dist
+.output
 *.tgz
 
 # code coverage
@@ -23,6 +24,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.local
 
 # caches
+.tanstack
 .eslintcache
 .cache
 *.tsbuildinfo
@@ -38,3 +40,8 @@ spikes/
 
 # rust / near
 target/
+
+.quitclaim/
+
+test-results/
+playwright-report/

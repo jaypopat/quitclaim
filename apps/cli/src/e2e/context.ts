@@ -4,7 +4,9 @@ import type { Lot, RequestTransferResult } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
 import { env } from "@quitclaim/sdk/env.ts";
 import { mustLot, pullSource, requestTransfer } from "@quitclaim/sdk/lot.ts";
-import { call, view, YOCTO, type CallOutcome } from "@quitclaim/sdk/near.ts";
+import { call, view, type CallOutcome } from "@quitclaim/sdk/near.ts";
+import { baseTxUrl } from "@quitclaim/shared/base.ts";
+import { YOCTO } from "@quitclaim/shared/calls.ts";
 
 export const contract = env.lotContract();
 export const alice = env.alice();
@@ -38,7 +40,7 @@ export async function withdrawTo(
   return {
     pulled,
     req,
-    links: [...(pulled ? [`pull ${base.txUrl(pulled)}`] : []), req.url],
+    links: [...(pulled ? [`pull ${baseTxUrl(pulled)}`] : []), req.url],
   };
 }
 

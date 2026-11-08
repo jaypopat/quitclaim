@@ -24,14 +24,15 @@ import {
 } from "viem";
 import { fileURLToPath } from "node:url";
 import { Glob } from "bun";
-import type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";
+import type { GetExecutionStatusResponse } from "@quitclaim/shared/intents.ts";
 import { config, nearView } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
 import { env } from "@quitclaim/sdk/env.ts";
-import * as intents from "./intents.ts";
+import * as intents from "@quitclaim/shared/intents.ts";
 import { settle, type SettleStep } from "@quitclaim/sdk/settle.ts";
 import { logger } from "@quitclaim/sdk/logger.ts";
 import { mustLot, pullSource, requestTransfer } from "@quitclaim/sdk/lot.ts";
+import { baseClient, baseTxUrl, tokenBalance } from "@quitclaim/shared/base.ts";
 
 const [idArg, owner, amountArg] = Bun.argv.slice(2);
 if (!idArg || !owner) {
@@ -81,9 +82,9 @@ async function paidSince(
   amount: bigint,
   from: bigint,
 ) {
-  const head = await base.pub.getBlockNumber();
+  const head = await baseClient.getBlockNumber();
   for (let start = from; start <= head; start += LOG_SPAN) {
-    const logs = await base.pub.getContractEvents({
+    const logs = await baseClient.getContractEvents({
       address: config.evm.token,
       abi: erc20Abi,
       eventName: "Transfer",
@@ -158,10 +159,10 @@ for (const name of new Glob("cash-out-*.json").scanSync(reportsDir)) {
 const pull = await pullSource(lot);
 const requested = amountArg
   ? parseUnits(amountArg, 6)
-  : await base.tokenBalance(config.evm.token, address);
+  : await tokenBalance(config.evm.token, address);
 if (requested === 0n) throw new Error(`lot ${id} holds no USDC to cash out`);
 const wnearBefore = await wnearOf(owner);
-const fromBlock = await base.pub.getBlockNumber();
+const fromBlock = await baseClient.getBlockNumber();
 const quoted = await intents.quote(requested, address, owner);
 const amount = BigInt(quoted.quote.amountIn);
 
@@ -208,7 +209,7 @@ try {
     (e: Error) => ({ ok: false, error: e.message }),
   );
   await record();
-  const receipt = await base.pub.waitForTransactionReceipt({ hash });
+  const receipt = await baseClient.waitForTransactionReceipt({ hash });
   const transferLogged = parseEventLogs({
     abi: erc20Abi,
     eventName: "Transfer",
@@ -223,7 +224,7 @@ try {
   op.deposit = {
     status: receipt.status,
     transferLogged,
-    url: base.txUrl(hash),
+    url: baseTxUrl(hash),
   };
   await record();
   if (receipt.status !== "success" || !transferLogged)

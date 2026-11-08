@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.output
+**/.quitclaim
+.env
+.git
+target
+spikes
+reports
+!reports/heist.json
+test-results
+.audit

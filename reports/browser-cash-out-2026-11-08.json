@@ -1,0 +1,93 @@
+{
+  "correlationId": "5c814f4d-acf7-48c3-8a07-68e0b5b95286",
+  "quoteResponse": {
+    "correlationId": "5c814f4d-acf7-48c3-8a07-68e0b5b95286",
+    "timestamp": "2026-11-08T14:31:41.665Z",
+    "quoteRequest": {
+      "dry": false,
+      "swapType": "EXACT_INPUT",
+      "slippageTolerance": 100,
+      "originAsset": "nep141:base-0x38d81431b9f76d9699af7517040d5221d9dea252.tp-omft.testnet",
+      "depositType": "ORIGIN_CHAIN",
+      "destinationAsset": "nep141:wnear.tidepool-sandbox.testnet",
+      "amount": "500000",
+      "refundTo": "0x7D743305dCd124106900B8ed2122Fbdd52a8804F",
+      "refundType": "ORIGIN_CHAIN",
+      "recipient": "bob.quitclaim-spike-43135.testnet",
+      "recipientType": "DESTINATION_CHAIN",
+      "deadline": "2026-11-08T15:01:41.229Z"
+    },
+    "quote": {
+      "amountIn": "500000",
+      "amountInFormatted": "0.5",
+      "amountInUsd": "0.4997",
+      "minAmountIn": "500000",
+      "amountOut": "134817408536585354976000",
+      "amountOutFormatted": "0.134817408536585354976",
+      "amountOutUsd": "0.4975",
+      "minAmountOut": "133469234451219501426240",
+      "timeEstimate": 60,
+      "depositAddress": "0x3b75b53a8c098ab69feA759F74132944Ba136255",
+      "deadline": "2026-11-08T15:01:41.229Z",
+      "timeWhenInactive": "2026-11-08T15:01:41.229Z"
+    },
+    "signature": "ed25519:koTFaUbsHQasmddfqDBJi9UKd1KmkYoaa7U5X3G4vfgWJ4pT2rYRLdErUthgTeBCEP19F9BKLqqufqmo6y1GMaY"
+  },
+  "status": "SUCCESS",
+  "updatedAt": "2026-11-08T14:33:58.422Z",
+  "swapDetails": {
+    "intentHashes": [
+      "8JRfUywaYm4L9uHhiP3gjqTqihL1e1sr7U3tiRDnwwbK",
+      "EPwFAFNEJSPs9MAWKWz7pxXbQzZpggc4TBwKDV5H68oR"
+    ],
+    "nearTxHashes": [
+      "7x1ii1qCZSexMPsxctNGVuhQR7WUNUw7UQRHtFX6aSyp",
+      "2tynYBT76QjHTs6oxZGpQnzr8AXC7zwHCAoWhY1giTra",
+      "EWNza9f3xjppTcwcutbkT81puyHS3aaAGhya1K61z2Pf"
+    ],
+    "originChainTxHashes": [
+      {
+        "hash": "0x746633ccde6c39c974678df0061371acb3b3c2478181953e0cf90431458d8952",
+        "explorerUrl": "https://sepolia.basescan.org/tx/0x746633ccde6c39c974678df0061371acb3b3c2478181953e0cf90431458d8952"
+      }
+    ],
+    "destinationChainTxHashes": [
+      {
+        "hash": "EWNza9f3xjppTcwcutbkT81puyHS3aaAGhya1K61z2Pf",
+        "explorerUrl": "https://testnet.nearblocks.io/txns/EWNza9f3xjppTcwcutbkT81puyHS3aaAGhya1K61z2Pf"
+      }
+    ],
+    "amountIn": "500000",
+    "amountInFormatted": "0.5",
+    "amountInUsd": "0.4997",
+    "amountOut": "134813631571815734560000",
+    "amountOutFormatted": "0.13481363157181573456",
+    "amountOutUsd": "0.4975",
+    "slippage": 0,
+    "depositedAmount": "500000",
+    "depositedAmountFormatted": "0.5",
+    "depositedAmountUsd": "0.4997",
+    "withdrawFee": "0"
+  },
+  "tidepool": {
+    "explorer": [
+      {
+        "label": "sweep deposit address into vault (Base Sepolia)",
+        "url": "https://sepolia.basescan.org/tx/0x0b7daa4f72a9599f3988e51b47dbdcf84ae6c1ea087b2228232367a6685655d5"
+      },
+      {
+        "label": "mint bridged USDC (Base Sepolia deposit)",
+        "url": "https://testnet.nearblocks.io/txns/7x1ii1qCZSexMPsxctNGVuhQR7WUNUw7UQRHtFX6aSyp"
+      },
+      {
+        "label": "credit deposit into verifier (ft_transfer_call)",
+        "url": "https://testnet.nearblocks.io/txns/2tynYBT76QjHTs6oxZGpQnzr8AXC7zwHCAoWhY1giTra"
+      },
+      {
+        "label": "swap (execute_intents)",
+        "url": "https://testnet.nearblocks.io/txns/EWNza9f3xjppTcwcutbkT81puyHS3aaAGhya1K61z2Pf"
+      }
+    ],
+    "intentsAccount": "ebe587e71f93a3e0ebd97bdb7e9c7d5b26c46c37410f957459c52bea9775452f"
+  }
+}

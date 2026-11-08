@@ -6,7 +6,7 @@
  */
 import { config, isBurn } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
-import { retainedTx } from "../heist-evidence.ts";
+import { retainedTx } from "@quitclaim/shared/heist/evidence.ts";
 import { provenMined, settle } from "@quitclaim/sdk/settle.ts";
 import {
   buy,
@@ -38,6 +38,8 @@ import {
   withdrawTo,
 } from "./context.ts";
 import { firstLine, settleLinks, type Run } from "./report.ts";
+import { baseTxUrl, tokenBalance } from "@quitclaim/shared/base.ts";
+import { titleSearch } from "@quitclaim/shared/sablier.ts";
 
 export async function handover(run: Run) {
   const p = await provision({
@@ -56,8 +58,8 @@ export async function handover(run: Run) {
     pass: p.title.clean,
     links: [
       p.mint.url,
-      `stream ${base.txUrl(p.streamTx)}`,
-      `gas ${base.txUrl(p.fundTx)}`,
+      `stream ${baseTxUrl(p.streamTx)}`,
+      `gas ${baseTxUrl(p.fundTx)}`,
     ],
   });
   const id = p.id;
@@ -72,7 +74,7 @@ export async function handover(run: Run) {
     links: w0.links,
   });
   const s0 = await settle(contract, keeper, id);
-  const aliceTokens = await base.tokenBalance(p.token, aliceEvm);
+  const aliceTokens = await tokenBalance(p.token, aliceEvm);
   run.record({
     step: "prove withdrawal",
     expect: "nonce 0 proven consumed, lot stays Active",
@@ -175,7 +177,7 @@ export async function handover(run: Run) {
       after.total === before.total &&
       after.held >= before.held &&
       stillListed.listing?.version === stillListed.version,
-    links: outsider ? [`pull ${base.txUrl(outsider)}`] : [],
+    links: outsider ? [`pull ${baseTxUrl(outsider)}`] : [],
   });
 
   const sale = await buy(contract, bob, id);
@@ -223,12 +225,12 @@ export async function handover(run: Run) {
     links: [locked.url],
   });
 
-  const aliceBefore = await base.tokenBalance(p.token, aliceEvm);
+  const aliceBefore = await tokenBalance(p.token, aliceEvm);
   const wb = await withdrawTo(bob, id, bobEvm);
   const sb = await settle(contract, keeper, id);
-  const bobTokens = await base.tokenBalance(p.token, bobEvm);
-  const aliceAfter = await base.tokenBalance(p.token, aliceEvm);
-  const title = await sablier.titleSearch(p.streamId, p.address, p.token);
+  const bobTokens = await tokenBalance(p.token, bobEvm);
+  const aliceAfter = await tokenBalance(p.token, aliceEvm);
+  const title = await titleSearch(p.streamId, p.address, p.token);
   run.record({
     step: "bob withdraws",
     expect:
@@ -246,7 +248,7 @@ export async function handover(run: Run) {
   const resale = await buy(contract, carol, id);
   const third = await lotOf(id);
   const minterGotAgain = (await proceeds(minter)) - minterBeforeResale;
-  const resold = await sablier.titleSearch(p.streamId, p.address, p.token);
+  const resold = await titleSearch(p.streamId, p.address, p.token);
   run.record({
     step: "bob resells to carol",
     expect:

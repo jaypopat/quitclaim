@@ -1,8 +1,5 @@
 import {
-  erc20Abi,
-  createPublicClient,
   createWalletClient,
-  encodeFunctionData,
   http,
   keccak256,
   parseTransaction,
@@ -13,6 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { config, type Finality } from "@quitclaim/shared";
+import { baseClient, reached } from "@quitclaim/shared/base.ts";
 import { env } from "./env.ts";
 
 const oracleAbi = [
@@ -25,10 +23,6 @@ const oracleAbi = [
   },
 ] as const;
 
-export const pub = createPublicClient({
-  chain: baseSepolia,
-  transport: http(config.evm.rpcUrl),
-});
 export const funderAccount = () => privateKeyToAccount(env.funderKey());
 export const wallet = () =>
   createWalletClient({
@@ -37,36 +31,10 @@ export const wallet = () =>
     account: funderAccount(),
   });
 
-export const txUrl = (hash: string) => `${config.evm.explorer}/tx/${hash}`;
-
-/** Floor fees for a new tx: 2x the current base fee plus a 1 Mwei minimum tip. */
-export async function floorFees() {
-  const block = await pub.getBlock();
-  const tip = await pub.estimateMaxPriorityFeePerGas();
-  const maxPrio = tip > 1_000_000n ? tip : 1_000_000n;
-  return { maxFee: 2n * (block.baseFeePerGas ?? 0n) + maxPrio, maxPrio };
-}
-
-export async function estimateTransferGas(
-  token: Address,
-  lot: Address,
-  to: Address,
-  amount: bigint,
-) {
-  const data = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: "transfer",
-    args: [to, amount],
-  });
-  return (
-    ((await pub.estimateGas({ account: lot, to: token, data })) * 13n) / 10n
-  );
-}
-
 /** Worst-case cost of a signed tx: gas * maxFee + value + Base's L1 data fee. */
 export async function maxCost(raw: Hex) {
   const tx = parseTransaction(raw);
-  const l1 = await pub.readContract({
+  const l1 = await baseClient.readContract({
     address: baseSepolia.contracts.gasPriceOracle.address,
     abi: oracleAbi,
     functionName: "getL1Fee",
@@ -77,19 +45,19 @@ export async function maxCost(raw: Hex) {
 
 /** Tops the lot up to `need` from the funder and waits for the top-up to mine. */
 export async function ensureBalance(address: Address, need: bigint) {
-  const have = await pub.getBalance({ address });
+  const have = await baseClient.getBalance({ address });
   if (have >= need) return null;
   const hash = await wallet().sendTransaction({
     to: address,
     value: need - have + need / 2n,
   });
-  await pub.waitForTransactionReceipt({ hash });
+  await baseClient.waitForTransactionReceipt({ hash });
   return hash;
 }
 
 export async function fund(address: Address, value: bigint) {
   const hash = await wallet().sendTransaction({ to: address, value });
-  await pub.waitForTransactionReceipt({ hash });
+  await baseClient.waitForTransactionReceipt({ hash });
   return hash;
 }
 
@@ -101,7 +69,7 @@ export async function broadcast(raw: Hex): Promise<Broadcast> {
   try {
     return {
       status: "sent",
-      hash: await pub.sendRawTransaction({ serializedTransaction: raw }),
+      hash: await baseClient.sendRawTransaction({ serializedTransaction: raw }),
     };
   } catch (e) {
     const message = (e as { details?: string }).details ?? String(e);
@@ -114,24 +82,10 @@ export async function broadcast(raw: Hex): Promise<Broadcast> {
 }
 
 export async function receipt(hash: Hex): Promise<TransactionReceipt | null> {
-  return pub.getTransactionReceipt({ hash }).catch(() => null);
+  return baseClient.getTransactionReceipt({ hash }).catch(() => null);
 }
 
 /** Resolves once the chain head at `finality` has reached `block`, so a proof won't time out at MPC. */
 export async function waitFinality(block: bigint, finality: Finality) {
-  const blockTag = finality.toLowerCase() as Lowercase<Finality>;
-  for (;;) {
-    const head = await pub.getBlock({ blockTag });
-    if (head.number >= block) return head.number;
-    await Bun.sleep(15_000);
-  }
-}
-
-export function tokenBalance(token: Address, holder: Address) {
-  return pub.readContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [holder],
-  });
+  while (!(await reached(block, finality))) await Bun.sleep(15_000);
 }

@@ -4,11 +4,13 @@
  */
 import { config, fetchLotAddress } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
-import { MINT_DEPOSIT } from "@quitclaim/sdk/lot.ts";
 import { call, getFinality } from "@quitclaim/sdk/near.ts";
 import * as sablier from "@quitclaim/sdk/sablier.ts";
 import { alice, bob, contract, lotOf } from "./context.ts";
 import type { Run } from "./report.ts";
+import { baseTxUrl } from "@quitclaim/shared/base.ts";
+import { titleSearch } from "@quitclaim/shared/sablier.ts";
+import { MINT_DEPOSIT } from "@quitclaim/shared/calls.ts";
 
 export async function minting(run: Run) {
   const name = `e2e-minting-${run.started.getTime()}`;
@@ -19,9 +21,8 @@ export async function minting(run: Run) {
     expect:
       "non-cancelable, non-transferable, paying alice's namespaced lot address",
     got: `stream ${stream.id} pays ${address}`,
-    pass: (await sablier.titleSearch(stream.id, address, config.evm.token))
-      .clean,
-    links: [`stream ${base.txUrl(stream.tx)}`],
+    pass: (await titleSearch(stream.id, address, config.evm.token)).clean,
+    links: [`stream ${baseTxUrl(stream.tx)}`],
   });
   await base.waitFinality(stream.block, await getFinality(contract));
 
@@ -90,6 +91,6 @@ export async function minting(run: Run) {
       "refused before any MPC call: the stream sender could take the position back",
     got: refused.ok ? "minted!" : refused.error,
     pass: !refused.ok && refused.error.includes("stream is cancelable"),
-    links: [`stream ${base.txUrl(cancelable.tx)}`, refused.url],
+    links: [`stream ${baseTxUrl(cancelable.tx)}`, refused.url],
   });
 }

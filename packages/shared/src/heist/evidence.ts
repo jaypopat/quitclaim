@@ -5,7 +5,7 @@ import {
   type Hex,
   type TransactionSerializedEIP1559,
 } from "viem";
-import { config } from "@quitclaim/shared";
+import { config } from "../config.ts";
 import { baseDecode } from "near-api-js";
 import { z } from "zod";
 

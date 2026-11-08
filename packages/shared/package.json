@@ -3,11 +3,15 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./*": "./src/*"
   },
   "dependencies": {
     "near-api-js": "7.4.0",
-    "viem": "^2.57.16"
+    "sablier": "4.2.1",
+    "viem": "^2.57.16",
+    "zod": "4.6.7",
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0"

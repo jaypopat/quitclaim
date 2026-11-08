@@ -1,0 +1,20 @@
+{
+  // The web app compiles on the shadcn/dithercn registry baseline (strict, no
+  // noUncheckedIndexedAccess) so vendored registry code builds unmodified.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "../../node_modules/.cache/tsc-web",
+    "noUncheckedIndexedAccess": false,
+    // Start strips server-function imports from the client bundle only when unused imports are elided.
+    "verbatimModuleSyntax": false,
+    "types": ["bun", "vite/client"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": []
+}

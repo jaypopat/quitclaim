@@ -3,12 +3,9 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "@quitclaim/sdk": "workspace:*",
     "@quitclaim/shared": "workspace:*",
     "near-api-js": "7.4.0",
-    "sablier": "4.2.1",
-    "viem": "^2.57.16",
-    "zod": "4.6.7"
+    "viem": "^2.57.16"
   }
 }

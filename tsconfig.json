@@ -28,5 +28,6 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["apps", "packages"],
-  "exclude": ["node_modules", "spikes", "contracts"]
+  "exclude": ["node_modules", "spikes", "contracts", "apps/web"],
+  "references": [{ "path": "./apps/web" }]
 }

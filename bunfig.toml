@@ -1,2 +1,10 @@
 [fmt]
-ignorePatterns = ["packages/shared/src/lot.gen.ts"]
+ignorePatterns = [
+  "packages/shared/src/lot.gen.ts",
+  "apps/web/src/routeTree.gen.ts",
+  # Vendored from the shadcn and dithercn registries; kept byte-for-byte so `shadcn add` can update them.
+  "apps/web/src/components/ui/**",
+  "apps/web/src/components/dithercn/**",
+  "apps/web/src/lib/dither/**",
+  "apps/web/src/lib/utils.ts",
+]

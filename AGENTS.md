@@ -8,19 +8,19 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - Lots hold Tidepool's test USDC on Base Sepolia (`config.evm.token`, 6 decimals), paid in by real Sablier Lockup v4 streams (`packages/sdk/src/sablier.ts`).
 - `packages/shared` holds chain config, lot-address derivation and the contract ABI types. It is browser-safe.
 - `packages/sdk` holds the server-side clients (NEAR, Base, Sablier, the lot contract, `.env`) and `settle`. Apps import it by path, e.g. `@quitclaim/sdk/base.ts`.
-- `apps/web` is the frontend.
+- `apps/web` is the frontend. `src/components/ui`, `src/components/dithercn`, `src/lib/dither` and `src/lib/utils.ts` are vendored byte-for-byte from the shadcn and dithercn registries: update them with `bunx shadcn@latest add <name> --overwrite`, never edit them (wrap instead), and keep them out of `bun fmt`.
 - `apps/keeper` is the keeper loop. It only finds pending lots and calls `settle`.
-- `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out.
+- `apps/cli` holds the one-shot commands: e2e, heist, deploy-lot, freeze, lot-address, cash-out, seed.
 - Dependencies point one way: apps → `packages/sdk` → `packages/shared`. Apps never import each other.
 - `spikes/` is gitignored throwaway work. `spikes/notes/` holds the verified on-chain facts and tx links.
 
 ## Commands
 
-- `.githooks/pre-commit` runs `fmt:check` and `bun check` (set up by `bun install` via `prepare`). Fix with `bun run fmt`.
+- `.githooks/pre-commit` runs `fmt:check` and `bun check -b` (set up by `bun install` via `prepare`). `-b` follows the reference to `apps/web`, its own TS project. Fix with `bun run fmt`.
 - `bun run verify` runs everything: ABI check, typecheck, TS tests, lot tests, Sandbox tests. Run it before committing.
 - `bun run test:sandbox` builds the lot and local MPC fixture and runs deployed-WASM receipt tests with `near-sandbox` and `near-api`. It is included in `verify`; no testnet funds are needed.
 - `bun run build:release` builds committed source reproducibly with the digest-pinned Docker image. Use its artifact for the final deployment.
-- `bun run dev` serves the web app.
+- `bun run dev` serves the web app: Vite with HMR and TanStack Start in SPA mode on port 3000, run under Bun with the root `.env`. File routes live in `apps/web/src/routes`; `routeTree.gen.ts` is generated. Server-only code (the funder key) runs in `createServerFn` handlers and never reaches the client bundle.
 - `bun run lot-address <lot-contract> <path>` prints a lot's Base address.
 - `bun run deploy-lot <account> [Latest|Safe]` creates the account (a sub-account of `DEPLOYER_ACCOUNT` or a top-level `<name>.testnet`) and deploys the lot contract.
 - `bun run e2e [minting|handover|recovery|lease]` runs the end-to-end adversarial suite on fresh lots against testnet and writes `reports/e2e-<scenario>-*.md`. Scenarios live in `apps/cli/src/e2e/`.
@@ -28,12 +28,13 @@ NEAR hackathon entry (`nfts` track, deadline 2026-11-14 23:59 UTC). A NEP-171 NF
 - `bun run test:heist` runs the live heist command with an empty home and working directory, dotenv disabled, and no credential environment. It is separate from deterministic `verify`.
 - `bun run keeper [--watch]` settles lots: seal or end a run-out lease, gas top-up, broadcast, prove, rescue. Every action is permissionless.
 - `bun run cash-out <lot-id> <owner-account> [amount in USDC]` swaps an Active, unleased lot's USDC for Tidepool test wNEAR (no value) through Tidepool's 1Click sandbox. Only the title owner may run it. It writes `reports/cash-out-*.json` before signing and never re-quotes or pays twice. After an unresolved swap, read that record instead of rerunning. It is not an e2e scenario, because it depends on Tidepool's servers.
+- `bun run seed` puts three fresh test-USDC lots on the market with `ALICE_ACCOUNT` as owner: one listed for sale, one offered for lease, one held. It spends 60 USDC of the funder's faucet drip.
 - `bun run freeze` deletes every full-access key on `LOT_CONTRACT`, once, at the very end. It refuses unless the newest report of every e2e scenario passed at Safe finality against the deployed code hash, and it asks for typed confirmation. It is irreversible.
 - Wallet-backed ops scripts read the root `.env` (copy `.env.example`), so run them from the repo root. The keyless heist uses public RPCs without it. `DEPLOYER_ACCOUNT` is only the parent account for `deploy-lot`; it has no power over deployed contracts.
 
 ## Conventions
 
-- Bun only: `bun test`, `bun check`, `bunx`, `Bun.serve` with HTML imports (no Vite, Express or dotenv; Bun loads `.env`).
+- Bun is the runtime, package manager and test runner: `bun test`, `bun check`, `bunx` (no Express or dotenv; Bun loads `.env`). The one exception is `apps/web`, which builds and serves with Vite + TanStack Start (run through Bun).
 - Don't name a root script `check`, because it shadows `bun check`.
 - No AI co-author trailers or attribution in commits or PRs.
 

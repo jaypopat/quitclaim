@@ -6,10 +6,11 @@
  *   bun run keeper --watch    keep settling
  */
 import { env } from "@quitclaim/sdk/env.ts";
-import { leaseRunOut, mustLot } from "@quitclaim/sdk/lot.ts";
+import { mustLot } from "@quitclaim/sdk/lot.ts";
 import { logger } from "@quitclaim/sdk/logger.ts";
 import { view } from "@quitclaim/sdk/near.ts";
 import { settle } from "@quitclaim/sdk/settle.ts";
+import { leaseRunOut } from "@quitclaim/shared/control.ts";
 
 const PAGE_SIZE = 100;
 
@@ -34,7 +35,9 @@ async function pending(contract: string) {
     found.push(
       ...ids.filter((_, i) => {
         const lot = lots[i]!;
-        return lot.issued.some((t) => t.tx_hash) || leaseRunOut(lot);
+        return (
+          lot.issued.some((t) => t.tx_hash) || leaseRunOut(lot, Date.now())
+        );
       }),
     );
     if (tokens.length < PAGE_SIZE) return found;

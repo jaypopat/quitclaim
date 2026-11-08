@@ -8,8 +8,13 @@ import { logger } from "@quitclaim/sdk/logger.ts";
 import type { Finality } from "@quitclaim/shared";
 import * as base from "@quitclaim/sdk/base.ts";
 import type { SettleStep } from "@quitclaim/sdk/settle.ts";
-import { codeHash, fullAccessKeys, getFinality } from "@quitclaim/sdk/near.ts";
-import { parseEvidence, type HeistRun } from "../heist-evidence.ts";
+import { getFinality } from "@quitclaim/sdk/near.ts";
+import {
+  parseEvidence,
+  type HeistRun,
+} from "@quitclaim/shared/heist/evidence.ts";
+import { baseTxUrl } from "@quitclaim/shared/base.ts";
+import { codeHash, fullAccessKeys } from "@quitclaim/shared/near.ts";
 
 type Row = {
   step: string;
@@ -176,14 +181,14 @@ export function settleLinks(steps: SettleStep[]) {
       case "end_lease":
         return [`end lease ${step.outcome.url}`];
       case "topup":
-        return [`top-up ${base.txUrl(step.tx)}`];
+        return [`top-up ${baseTxUrl(step.tx)}`];
       case "broadcast":
         return "hash" in step.result
-          ? [`broadcast ${base.txUrl(step.result.hash)}`]
+          ? [`broadcast ${baseTxUrl(step.result.hash)}`]
           : [];
       case "mined":
         return [
-          `mined (${step.status}) block ${step.block} ${base.txUrl(step.tx)}`,
+          `mined (${step.status}) block ${step.block} ${baseTxUrl(step.tx)}`,
         ];
       case "rescue":
         return [`rescue ${step.outcome.url}`];

@@ -10,10 +10,13 @@ import {
   QuoteRequest,
 } from "@defuse-protocol/one-click-sdk-typescript";
 import type { Address, Hex } from "viem";
-import { config } from "@quitclaim/shared";
-import { logger } from "@quitclaim/sdk/logger.ts";
+import { config } from "./config.ts";
+import { getAddress } from "viem";
 
 OpenAPI.BASE = config.intents.apiBase;
+
+export const executionStatus = (depositAddress: Address) =>
+  OneClickService.getExecutionStatus(depositAddress);
 
 export const Status = GetExecutionStatusResponse.status;
 
@@ -46,7 +49,7 @@ export async function quote(
     ...res,
     quote: {
       ...res.quote,
-      depositAddress: depositAddress as Address,
+      depositAddress: getAddress(depositAddress),
       deadline,
     },
   };
@@ -68,7 +71,6 @@ export async function statusWithin(depositAddress: Address, ms: number) {
   try {
     return await req;
   } catch (err) {
-    logger.warn({ err, depositAddress }, "Swap status request failed");
     return null;
   } finally {
     clearTimeout(timer);
@@ -84,11 +86,13 @@ export async function awaitSwap(depositAddress: Address, timeoutMs: number) {
   let last: GetExecutionStatusResponse | null = null;
   while (Date.now() < until) {
     const next = await statusWithin(depositAddress, until - Date.now());
-    if (next && next.status !== last?.status)
-      logger.info({ depositAddress, status: next.status }, "Swap status");
     last = next ?? last;
     if (last && terminal.has(last.status)) break;
-    await Bun.sleep(Math.min(5_000, Math.max(until - Date.now(), 0)));
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(5_000, Math.max(until - Date.now(), 0))),
+    );
   }
   return last;
 }
+
+export type { GetExecutionStatusResponse } from "@defuse-protocol/one-click-sdk-typescript";

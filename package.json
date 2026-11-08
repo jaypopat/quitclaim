@@ -11,7 +11,7 @@
     "fmt:check": "bun fmt --no-script --check && cargo fmt --all --check",
     "prepare": "git config core.hooksPath .githooks",
     "dev": "bun --filter @quitclaim/web dev",
-    "typecheck": "bun check",
+    "typecheck": "bun check -b",
     "test": "bun test packages apps",
     "build:lot": "cd contracts/lot && cargo near build non-reproducible-wasm",
     "test:lot": "cargo test -p quitclaim-lot",
@@ -26,9 +26,12 @@
     "test:heist": "bun --no-env-file apps/cli/src/heist-live.ts",
     "keeper": "bun apps/keeper/src/keeper.ts",
     "cash-out": "bun apps/cli/src/cash-out.ts",
-    "freeze": "bun apps/cli/src/freeze.ts"
+    "seed": "bun apps/cli/src/seed.ts",
+    "freeze": "bun apps/cli/src/freeze.ts",
+    "test:browser": "bun --bun node_modules/@playwright/test/cli.js test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/bun": "1.4.4"
   },
   "peerDependencies": {
