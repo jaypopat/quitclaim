@@ -1,0 +1,26 @@
+# Dokploy Compose Path: ./deploy/compose.yml. Route web to PORT (default 3000).
+# Local env: QUITCLAIM_ENV_FILE=../.env docker compose --env-file .env -f deploy/compose.yml ...
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VITE_LOT_CONTRACT: ${LOT_CONTRACT}
+    command: bun apps/web/.output/server/index.mjs
+    env_file: ${QUITCLAIM_ENV_FILE:-.env}
+    environment:
+      PORT: ${PORT:-3000}
+    expose: ["${PORT:-3000}"]
+    restart: unless-stopped
+  keeper:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VITE_LOT_CONTRACT: ${LOT_CONTRACT}
+    command: bun apps/keeper/src/keeper.ts --watch
+    env_file: ${QUITCLAIM_ENV_FILE:-.env}
+    volumes:
+      - ${KEEPER_KEY_FILE:-../../files/keeper.json}:/root/.near-credentials/testnet/${KEEPER_ACCOUNT}.json:ro
+    restart: unless-stopped

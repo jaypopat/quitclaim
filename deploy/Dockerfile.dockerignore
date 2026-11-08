@@ -2,7 +2,7 @@
 **/dist
 **/.output
 **/.quitclaim
-.env
+**/.env
 .git
 target
 spikes
