@@ -8,6 +8,7 @@ import { config } from "./config.ts";
 import type {
   Issued,
   Lease,
+  LeaseBudget,
   LeaseOffer,
   Listing,
   Lot,
@@ -154,6 +155,19 @@ export const tokensOf = async (contract: string, account: string) =>
     contract,
     await paged(contract, "nft_tokens_for_owner", { account_id: account }),
   );
+
+const leaseBudgetSchema: z.ZodType<LeaseBudget> = z.object({
+  allowed: u128,
+  committed: u128,
+});
+
+/** What the live lease may still move: vested since it started, less what its transfers committed. */
+export async function leaseLeft(contract: string, id: number) {
+  const { allowed, committed } = leaseBudgetSchema.parse(
+    await nearView(contract, "lease_budget", { id }),
+  );
+  return BigInt(allowed) - BigInt(committed);
+}
 
 export async function proceedsOf(contract: string, account: string) {
   return BigInt(
