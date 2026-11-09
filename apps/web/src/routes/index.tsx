@@ -6,15 +6,14 @@ import { HandoverStory } from "@/components/landing/handover-story.tsx";
 import { HeistReplay } from "@/components/landing/heist-replay.tsx";
 import { OfferKinds } from "@/components/landing/offer-kinds.tsx";
 import { HeroLot } from "@/components/landing/hero-lot.tsx";
+import { TrustModel } from "@/components/landing/trust-model.tsx";
 import { LotCard } from "@/components/lot-card.tsx";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LOT_CONTRACT } from "@/lib/contract.ts";
+import { GITHUB, LOT_CONTRACT } from "@/lib/contract.ts";
 import { frozenQuery, lotIdsQuery } from "@/lib/queries.ts";
 
 export const Route = createFileRoute("/")({ component: Landing });
-
-const GITHUB = "https://github.com/jaypopat/quitclaim";
 
 function Section({
   title,
@@ -77,7 +76,7 @@ function Panel({
 
 function Landing() {
   const { data: ids } = useQuery(lotIdsQuery);
-  const { data: frozen } = useQuery(frozenQuery);
+  const { data: frozen = false } = useQuery(frozenQuery);
   const heroId = ids?.at(0);
   return (
     <main>
@@ -87,13 +86,13 @@ function Landing() {
             BUILT ON NEAR CHAIN SIGNATURES
           </span>
           <h1 className="text-[clamp(44px,6.4vw,88px)] leading-[0.98] font-medium tracking-[-0.045em] text-balance">
-            Sell a wallet. The seller keeps nothing.
+            An NFT that owns a wallet.
           </h1>
           <p className="max-w-[27em] text-[clamp(17px,1.4vw,19px)] text-pretty text-muted-foreground">
-            Sell your locked vesting tokens, even from a non-transferable
-            stream. The stream pays one address. An NFT on NEAR is the title to
-            it. Before the title moves, everything the seller signed is
-            cancelled on Base.
+            Locked vesting tokens can't be sold, and handing over a private key
+            doesn't work, because the seller keeps a copy. Quitclaim makes an
+            NFT the title to the address your stream pays. Sell the NFT, and
+            nothing the seller signed can touch the money again.
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild size="lg" className="h-12 px-6 text-[15px]">
@@ -114,7 +113,8 @@ function Landing() {
                 HOLDING LOCKED TOKENS?
               </span>
               <span className="text-sm text-muted-foreground">
-                Sell them now, or lease out the next month of unlocks.
+                Sell them now, lease out the next month of unlocks, or cash out
+                what has vested to NEAR.
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -133,49 +133,53 @@ function Landing() {
         )}
       </section>
 
-      <Section title="A stream stays put. Its title can move.">
+      <Section title="No private key. Four NEAR pieces instead.">
         <div className="grid gap-12 lg:grid-cols-[1fr_2fr]">
           <div className="flex flex-col gap-6">
             <p className="text-xl leading-relaxed">
-              Your employer's stream keeps paying the same address. Sell the
-              right to its future payouts without sharing a private key.
+              The address on Base has no private key to copy. NEAR's MPC network
+              signs for it, and only when the lot contract asks.
             </p>
             <p className="text-sm text-muted-foreground">
-              A copied key cannot be taken back. Quitclaim gives the buyer a
-              verifiable handover: the seller's outstanding signatures must be
-              used up before the title moves.
+              So the title can change hands, the stream keeps paying the same
+              address, and the seller is left with nothing that still works.
             </p>
             <Link to="/mint" className="text-sm text-primary">
-              Set up your receiving address →
+              Turn your stream into a title →
             </Link>
           </div>
           <ol className="border-t">
             {[
               [
-                "01",
-                "One address. One title.",
-                "A non-transferable Sablier stream pays a Base address. Its NFT on NEAR decides who may ask MPC to sign a withdrawal.",
+                "NEP-171",
+                "The NFT is the title.",
+                "Whoever holds it controls the address. Sell it like any NFT, and the minter earns a royalty on each resale.",
               ],
               [
-                "02",
-                "Use up the seller's signatures.",
-                "Before a sale, signing stops. A burn consumes the outstanding nonce on Base, making saved withdrawals unusable.",
+                "CHAIN SIGNATURES",
+                "MPC signs for its holder only.",
+                "Withdrawals from the address are signed by NEAR's MPC network, for the current holder and nobody else.",
               ],
               [
-                "03",
-                "Prove it, then hand it over.",
-                "MPC attests that the nonce was consumed. Only then can the buyer receive the title and control the same address.",
+                "VERIFY_FOREIGN_TRANSACTION",
+                "The seller's last signature is burned, and proven.",
+                "Before a sale, the contract burns the seller's outstanding nonce on Base. MPC proves the burn landed. Only then does the title move.",
               ],
-            ].map(([number, title, description]) => (
+              [
+                "NEAR INTENTS",
+                "Cash out to NEAR in one step.",
+                "The owner swaps the USDC in the address for wNEAR through 1Click on NEAR Intents, with no bridge to run. On testnet it uses Tidepool's sandbox and test tokens.",
+              ],
+            ].map(([primitive, title, description]) => (
               <li
-                key={number}
-                className="grid grid-cols-[3rem_1fr] gap-4 border-b py-6 sm:grid-cols-[3rem_1fr_1fr]"
+                key={primitive}
+                className="grid gap-2 border-b py-6 sm:grid-cols-[1fr_1fr] sm:gap-x-6"
               >
-                <span className="font-mono text-xs text-primary">{number}</span>
+                <span className="font-mono text-xs break-all text-primary sm:col-span-2">
+                  {primitive}
+                </span>
                 <h3 className="text-xl font-medium">{title}</h3>
-                <p className="col-start-2 text-sm text-muted-foreground sm:col-start-auto">
-                  {description}
-                </p>
+                <p className="text-sm text-muted-foreground">{description}</p>
               </li>
             ))}
           </ol>
@@ -195,28 +199,6 @@ function Landing() {
       <Section title="Sell it all, or lease the unlocks.">
         <OfferKinds />
       </Section>
-
-      <section className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
-        <div className="flex flex-wrap items-end justify-between gap-5">
-          <H2>On the market</H2>
-          <Link
-            to="/market"
-            className="text-[15px] underline decoration-border underline-offset-[5px] hover:decoration-primary"
-          >
-            See all positions
-          </Link>
-        </div>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4">
-          {ids
-            ? ids
-                .slice(-4)
-                .reverse()
-                .map((id) => <LotCard key={id} id={id} />)
-            : Array.from({ length: 4 }, (_, i) => (
-                <Skeleton key={i} className="h-96" />
-              ))}
-        </div>
-      </section>
 
       <Section title="What's real.">
         <p className="-mt-6 max-w-2xl text-muted-foreground">
@@ -253,17 +235,30 @@ function Landing() {
               : "At the end, every full-access key on the contract is deleted so nobody can change it."}
           </Panel>
         </div>
-        <p className="border p-5 text-sm leading-relaxed">
-          <span className="mr-3 font-mono text-xs text-primary">
-            WHAT YOU'RE TRUSTING
-          </span>
-          NEAR's MPC network signs and attests honestly. The lot contract is
-          {frozen ? " frozen" : " frozen at the end"}. Base transactions are
-          final at the contract's selected finality. Cash-out also trusts
-          Tidepool's custodial deposit relayer until it delivers test wNEAR or
-          refunds the lot.
-        </p>
+        <TrustModel frozen={frozen} />
       </Section>
+
+      <section className="flex flex-col gap-10 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <H2>Latest titles</H2>
+          <Link
+            to="/market"
+            className="text-[15px] underline decoration-border underline-offset-[5px] hover:decoration-primary"
+          >
+            See all positions
+          </Link>
+        </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4">
+          {ids
+            ? ids
+                .slice(-4)
+                .reverse()
+                .map((id) => <LotCard key={id} id={id} />)
+            : Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} className="h-96" />
+              ))}
+        </div>
+      </section>
 
       <section className="flex flex-wrap items-end justify-between gap-8 border-t px-[clamp(20px,4vw,64px)] py-[clamp(56px,9vh,112px)]">
         <h2 className="max-w-[11em] text-[clamp(34px,4.6vw,64px)] leading-none font-medium tracking-[-0.04em] text-balance">

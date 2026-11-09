@@ -45,8 +45,8 @@ export function LotCard({ id }: { id: number }) {
           {formatToken(pos.remaining, view.token.decimals)} {view.token.symbol}{" "}
           remaining
         </span>
-        <span className="text-right">
-          <span className="block text-xl font-semibold tracking-tight">
+        <span className="shrink-0 text-right">
+          <span className="block text-xl font-semibold tracking-tight whitespace-nowrap">
             {price}
           </span>
           {note && (

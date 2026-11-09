@@ -137,3 +137,9 @@
     --dither-bloom: 1;
   }
 }
+
+@keyframes wire-flow {
+  to {
+    background-position-y: 8px;
+  }
+}

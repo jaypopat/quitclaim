@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now.ts";
 import { formatToken } from "@/lib/format";
-import { frozenQuery, lotQuery } from "@/lib/queries.ts";
+import { frozenQuery, liveLotQuery } from "@/lib/queries.ts";
 
 const lotParams = z.object({ id: z.coerce.number().int().nonnegative() });
 
@@ -38,7 +38,7 @@ export const Route = createFileRoute("/lot/$id")({
 
 function LotPage() {
   const { id } = Route.useParams();
-  const { data: view, error } = useQuery(lotQuery(id));
+  const { data: view, error } = useQuery(liveLotQuery(id));
   const { data: frozen = false } = useQuery(frozenQuery);
   const now = useNow();
 
@@ -60,27 +60,32 @@ function LotPage() {
   const pos = position(view, now / 1000);
   const schedule = view.lot.source.schedule;
   return (
-    <main className="flex flex-col gap-10 px-[clamp(20px,4vw,64px)] py-8">
-      <Link
-        to="/market"
-        className="text-sm text-muted-foreground hover:text-foreground"
-      >
-        ← Market
-      </Link>
-      <div className="grid gap-x-10 gap-y-8 [grid-template-areas:'head'_'offer'_'body'] lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] lg:[grid-template-areas:'head_offer'_'body_offer']">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-[clamp(20px,4vw,64px)] py-5 lg:min-h-[calc(100dvh-4rem-1px)] lg:justify-center">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <Link
+          to="/market"
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          ← Market
+        </Link>
+        <span className="font-mono text-xs text-muted-foreground">
+          Read live from NEAR testnet, Base Sepolia and Sablier
+        </span>
+      </div>
+      <div className="grid gap-x-10 gap-y-6 [grid-template-areas:'head'_'offer'_'body'_'checks'] lg:grid-cols-[minmax(0,1fr)_minmax(280px,24rem)] lg:grid-rows-[auto_1fr] lg:[grid-template-areas:'head_side'_'body_side']">
         <div className="flex min-w-0 items-center gap-5 [grid-area:head]">
           <LotField
             id={id}
             offer={current.kind}
             size={2}
-            className="size-[clamp(80px,10vw,132px)] shrink-0 border"
+            className="size-[clamp(64px,7vw,96px)] shrink-0 border"
           />
           <div className="flex min-w-0 flex-col gap-1">
             <span className="truncate font-mono text-xs text-muted-foreground">
               NFT · NEP-171 · {view.lot.path}
             </span>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="text-[clamp(34px,4.6vw,56px)] leading-none font-medium tracking-[-0.03em]">
+              <h1 className="text-[clamp(30px,3.6vw,44px)] leading-none font-medium tracking-[-0.03em]">
                 Quitclaim #{id}
               </h1>
               <Badge variant="outline">{view.lot.state}</Badge>
@@ -95,7 +100,7 @@ function LotPage() {
             </a>
           </div>
         </div>
-        <div className="flex min-w-0 flex-col gap-8 [grid-area:body]">
+        <div className="flex min-w-0 flex-col gap-6 [grid-area:body]">
           <VestingChart
             schedule={schedule}
             nowSec={now / 1000}
@@ -108,30 +113,27 @@ function LotPage() {
             withdrawn={view.stream.withdrawn}
             endSec={schedule.end}
           />
+          <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+            <NonceStrip slots={nonceSlots(view)} />
+            <HistoryList entries={history(view.lot)} token={view.token} />
+          </div>
         </div>
-        <div className="min-w-0 [grid-area:offer]">
-          <OfferBox offer={current} lot={view.lot}>
-            <SettleStatus settle={settleProgress(view)} />
-            <LotActions view={view} />
-            {pos.claimable > 0n && (
-              <PullButton
-                id={id}
-                label={`Pull ${formatToken(pos.claimable, view.token.decimals)} ${view.token.symbol} from the stream`}
-              />
-            )}
-          </OfferBox>
-        </div>
-      </div>
-      <p className="border p-4 text-sm text-muted-foreground">
-        Every figure here is read live from NEAR testnet, Base Sepolia and
-        Sablier. Ownership protection depends on honest MPC signing and
-        attestation, a frozen contract, and Base finality.
-      </p>
-      <div className="grid gap-10 lg:grid-cols-2">
-        <TitleChecks checks={titleChecks(view, frozen)} />
-        <div className="flex flex-col gap-10">
-          <NonceStrip slots={nonceSlots(view)} />
-          <HistoryList entries={history(view.lot)} token={view.token} />
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-6 lg:[grid-area:side]">
+          <div className="min-w-0 [grid-area:offer]">
+            <OfferBox offer={current} lot={view.lot}>
+              <SettleStatus settle={settleProgress(view)} />
+              <LotActions view={view} />
+              {pos.claimable >= 10n ** BigInt(view.token.decimals - 2) && (
+                <PullButton
+                  id={id}
+                  label={`Pull ${formatToken(pos.claimable, view.token.decimals)} ${view.token.symbol} from the stream`}
+                />
+              )}
+            </OfferBox>
+          </div>
+          <div className="min-w-0 [grid-area:checks]">
+            <TitleChecks checks={titleChecks(view, frozen)} />
+          </div>
         </div>
       </div>
     </main>

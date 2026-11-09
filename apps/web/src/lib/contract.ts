@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const GITHUB = "https://github.com/jaypopat/quitclaim";
+
 /** From `.env` (see `.env.example`); Vite inlines `VITE_*` into the browser bundle. */
 export const LOT_CONTRACT = z
   .string()
