@@ -11,7 +11,7 @@ const nav = [
 
 export function Layout() {
   return (
-    <div className="min-h-dvh">
+    <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
         <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 px-[clamp(20px,4vw,64px)] py-3">
           <Link to="/" className="text-base font-semibold tracking-tight">
@@ -40,7 +40,9 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <Outlet />
+      <div className="flex-1">
+        <Outlet />
+      </div>
       <footer className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3 border-t px-[clamp(20px,4vw,64px)] py-8 text-sm text-muted-foreground">
         <span>
           Built for the NEAR Hackathon, NFTs That Do Something track. Testnet
