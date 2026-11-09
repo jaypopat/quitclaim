@@ -11,16 +11,29 @@ import { funderAccount, wallet } from "./base.ts";
 
 const faucetAbi = parseAbi(["function faucet()"]);
 
+/** When a stream starts (unix seconds, may be in the past) and an optional cliff that unlocks a lump sum. */
+export type Timeline = {
+  startSec?: number;
+  cliffSec?: number;
+  cliffUnlock?: bigint;
+};
+
 /**
  * A non-transferable linear stream of the lot token paying `recipient`, funded by the funder, who
- * draws on the token's faucet when short. Non-cancelable unless `cancelable` is set, which exists
- * only to show the contract refusing such a stream.
+ * draws on the token's faucet when short. It runs `durationSec` from `startSec` (default now), so a
+ * past start gives a stream that is already part-vested. Non-cancelable unless `cancelable` is set,
+ * which exists only to show the contract refusing such a stream.
  */
 export async function createStream(
   recipient: Address,
   amount: bigint,
   durationSec: number,
-  { cancelable = false } = {},
+  {
+    cancelable = false,
+    startSec = Math.floor(Date.now() / 1000),
+    cliffSec = 0,
+    cliffUnlock = 0n,
+  }: Timeline & { cancelable?: boolean } = {},
 ) {
   const token = config.evm.token;
   const held = await tokenBalance(token, funderAccount().address);
@@ -44,7 +57,7 @@ export async function createStream(
   await baseClient.waitForTransactionReceipt({ hash: approve });
   const tx = await wallet().writeContract({
     ...lockup,
-    functionName: "createWithDurationsLL",
+    functionName: "createWithTimestampsLL",
     args: [
       {
         sender: funderAccount().address,
@@ -53,11 +66,12 @@ export async function createStream(
         token,
         cancelable,
         transferable: false,
+        timestamps: { start: startSec, end: startSec + durationSec },
         shape: "linear",
       },
-      { start: 0n, cliff: 0n },
+      { start: 0n, cliff: cliffUnlock },
       0,
-      { cliff: 0, total: durationSec },
+      cliffSec,
     ],
   });
   const receipt = await baseClient.waitForTransactionReceipt({ hash: tx });

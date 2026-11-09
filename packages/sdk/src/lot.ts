@@ -48,6 +48,7 @@ export async function provision(opts: {
   royaltyBps?: number;
   durationSec?: number;
   total?: bigint;
+  timeline?: sablier.Timeline;
   gasFund?: bigint;
 }): Promise<Provisioned> {
   const token = config.evm.token;
@@ -59,6 +60,7 @@ export async function provision(opts: {
     address,
     opts.total ?? 5n * 10n ** 6n,
     opts.durationSec ?? 3_600,
+    opts.timeline,
   );
   const title = await titleSearch(stream.id, address, token);
   if (!title.clean)
