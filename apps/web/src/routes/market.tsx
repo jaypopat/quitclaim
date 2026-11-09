@@ -24,7 +24,7 @@ function Market() {
       )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
         {ids
-          ? ids.map((id) => <LotCard key={id} id={id} />)
+          ? ids.toReversed().map((id) => <LotCard key={id} id={id} />)
           : Array.from({ length: 4 }, (_, i) => (
               <Skeleton key={i} className="h-96" />
             ))}

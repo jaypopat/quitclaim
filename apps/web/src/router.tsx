@@ -3,7 +3,10 @@ import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen.ts";
 
 export function getRouter() {
-  const queryClient = new QueryClient();
+  // Chain reads are rate-limited public RPCs: reuse anything fetched in the last 30s across pages.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { staleTime: 30_000 } },
+  });
   return createRouter({
     routeTree,
     scrollRestoration: true,

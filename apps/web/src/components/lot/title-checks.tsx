@@ -25,7 +25,7 @@ export function TitleChecks({
       </header>
       <ul>
         {checks.map((check) => (
-          <li key={check.label} className="flex gap-3 border-b py-3">
+          <li key={check.label} className="flex gap-3 border-b py-2.5">
             <span className="mt-0.5">{ICONS[check.status]}</span>
             <span className="flex flex-col gap-1">
               <span className="text-sm font-medium">{check.label}</span>

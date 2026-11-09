@@ -1,3 +1,4 @@
+import pMemoize from "p-memoize";
 import {
   createPublicClient,
   encodeFunctionData,
@@ -53,7 +54,8 @@ export async function estimateTransferGas(
   );
 }
 
-export async function tokenInfo(token: Address) {
+/** An ERC-20's symbol and decimals never change, so each token is read once per process. */
+export const tokenInfo = pMemoize(async (token: Address) => {
   const read = <F extends "symbol" | "decimals">(functionName: F) =>
     baseClient.readContract({ address: token, abi: erc20Abi, functionName });
   const [symbol, decimals] = await Promise.all([
@@ -61,7 +63,7 @@ export async function tokenInfo(token: Address) {
     read("decimals"),
   ]);
   return { address: token, symbol, decimals };
-}
+});
 
 export function tokenBalance(token: Address, holder: Address) {
   return baseClient.readContract({

@@ -47,7 +47,7 @@ export function OfferBox({
 }) {
   const { label, value, note } = summary(offer, lot);
   return (
-    <Card className="sticky top-24 min-w-0">
+    <Card className="min-w-0">
       <CardContent className="flex min-w-0 flex-col gap-2">
         <span className="text-sm text-muted-foreground">{label}</span>
         <span
