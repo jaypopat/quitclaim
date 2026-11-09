@@ -35,6 +35,23 @@ Alice owned a lot paying out a Sablier stream. Before selling it to Bob she sign
 
 To verify it yourself, with no wallet, keys or funds: `bun install && bun run heist`. The [judge guide](JUDGE.md) explains each check.
 
+## Try it in the browser
+
+Run the web app locally. Browsing needs only the contract name, no keys:
+
+```sh
+bun install
+printf 'LOT_CONTRACT=qc15.quitclaim-spike-43135.testnet\nVITE_LOT_CONTRACT=$LOT_CONTRACT\n' > .env
+bun run dev   # http://localhost:3000
+```
+
+1. On the home page, press **Try live replay**. The app checks the published sale from public NEAR and Base RPCs, then broadcasts Alice's kept withdrawal. Base rejects it with `nonce too low`.
+2. Open **Market** and the 4-year grant listed at 4 NEAR. The chart shows its 1-year cliff. Under **Signatures**, nonce 0 is used, and **History** shows it proven consumed before the listing.
+3. Open the lot leased to Carol. The offer box shows who controls the address until the lease ends, and the title checks show it isn't sealed for transfer.
+4. Connect a NEAR testnet wallet with a few testnet NEAR and buy the stream that is nearly finished, listed at 0.4 NEAR. It moves to **Portfolio**, and the lot page lists you as owner of the same Base address.
+
+The market comes from `bun run seed`: six vesting scenarios on test USDC, from a fresh grant to a resold one.
+
 ## How it works
 
 ```mermaid
@@ -87,6 +104,8 @@ bun run verify
 | -------------------------------------------------- | ------------------------------------------------------------------------- |
 | `bun run verify`                                   | ABI check, type-check, unit tests, Sandbox tests                          |
 | `bun run e2e [minting\|handover\|recovery\|lease]` | Adversarial suite against testnet; reports in `reports/`                  |
+| `bun run dev`                                      | Serve the web app on `PORT` (default 3000)                                |
+| `bun run seed`                                     | Put six vesting scenarios on the market (spends 100 test USDC)            |
 | `bun run keeper [--watch]`                         | Permissionless settling: gas, broadcast, prove, rescue, lease expiry      |
 | `bun run cash-out <lot-id> <owner> [usdc]`         | Swap a lot's USDC for Tidepool test wNEAR (no value) through NEAR Intents |
 | `bun run deploy-lot <account> [Latest\|Safe]`      | Deploy the lot contract                                                   |
