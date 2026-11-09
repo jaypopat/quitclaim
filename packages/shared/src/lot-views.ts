@@ -3,6 +3,7 @@
  * boundary. Each schema is typed against the ABI-generated type, so a contract change that the
  * schema misses fails `bun check`.
  */
+import pMemoize from "p-memoize";
 import { z } from "zod";
 import { config } from "./config.ts";
 import type {
@@ -109,12 +110,13 @@ function parseToken(t: z.infer<typeof tokens>[number]): HeldToken {
   };
 }
 
-/** The Base finality MPC waits for before it attests a log for this contract. */
-export async function contractFinality(contract: string) {
-  return z
-    .object({ finality: z.enum(["Latest", "Safe", "Finalized"]) })
-    .parse(await nearView(contract, "get_config", {})).finality;
-}
+/** The Base finality MPC waits for before it attests a log for this contract. Fixed at init, so read once. */
+export const contractFinality = pMemoize(
+  async (contract: string) =>
+    z
+      .object({ finality: z.enum(["Latest", "Safe", "Finalized"]) })
+      .parse(await nearView(contract, "get_config", {})).finality,
+);
 
 export async function getLot(contract: string, id: number) {
   return lot.nullable().parse(await nearView(contract, "get_lot", { id }));

@@ -20,12 +20,20 @@ export const lotIdsQuery = queryOptions({
     (await allTokens(LOT_CONTRACT))
       .filter((t) => t.item === "Title")
       .map((t) => t.lotId),
+  staleTime: 60_000,
 });
 
+/** A lot as cards and lists show it: cached, never polled. */
 export const lotQuery = (id: number) =>
   queryOptions({
     queryKey: ["lot", LOT_CONTRACT, id],
     queryFn: () => fetchLotView(LOT_CONTRACT, id),
+  });
+
+/** The lot someone is looking at: polled, fast while a signature is in flight. */
+export const liveLotQuery = (id: number) =>
+  queryOptions({
+    ...lotQuery(id),
     refetchInterval: ({ state: { data } }) =>
       data && ["idle", "clean"].includes(settleProgress(data).phase)
         ? 15_000
@@ -35,6 +43,7 @@ export const lotQuery = (id: number) =>
 export const frozenQuery = queryOptions({
   queryKey: ["frozen", LOT_CONTRACT],
   queryFn: async () => (await fullAccessKeys(LOT_CONTRACT)).length === 0,
+  staleTime: 5 * 60_000,
 });
 
 export const holdingsQuery = (account: string) =>

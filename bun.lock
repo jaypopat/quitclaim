@@ -100,6 +100,7 @@
       "dependencies": {
         "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
         "near-api-js": "7.4.0",
+        "p-memoize": "9.0.0",
         "sablier": "4.2.1",
         "viem": "^2.57.16",
         "zod": "4.6.7",
@@ -1431,6 +1432,8 @@
     "p-limit": ["p-limit@3.1.0", "", { "dependencies": { "yocto-queue": "^0.1.0" } }, "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ=="],
 
     "p-locate": ["p-locate@5.0.0", "", { "dependencies": { "p-limit": "^3.0.2" } }, "sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw=="],
+
+    "p-memoize": ["p-memoize@9.0.0", "", { "dependencies": { "mimic-function": "^5.0.1" } }, "sha512-CrDWMfDzkLVDM9qmPibiClRWbWbbLnQ7gfrvpY0F83az9zpZxtegV4SZvkYj0EeutirIK61YXLsIldlkGHORwA=="],
 
     "p-try": ["p-try@2.2.0", "", {}, "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ=="],
 

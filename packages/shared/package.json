@@ -7,11 +7,12 @@
     "./*": "./src/*"
   },
   "dependencies": {
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "near-api-js": "7.4.0",
+    "p-memoize": "9.0.0",
     "sablier": "4.2.1",
     "viem": "^2.57.16",
-    "zod": "4.6.7",
-    "@defuse-protocol/one-click-sdk-typescript": "0.1.26"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0"

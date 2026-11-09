@@ -1,4 +1,5 @@
 import { PublicKey } from "near-api-js";
+import pMemoize from "p-memoize";
 import { bytesToHex, type Address } from "viem";
 import { publicKeyToAddress } from "viem/accounts";
 import { config } from "./config.ts";
@@ -13,15 +14,18 @@ export function evmAddressFromNearKey(nearKey: string): Address {
   );
 }
 
-/** The lot address depends on the lot contract account and the path. Moving either orphans the lot. */
-export async function fetchLotAddress(
-  lotContract: string,
-  path: string,
-): Promise<Address> {
-  const key = await nearView<string>(
-    config.near.mpcSigner,
-    "derived_public_key",
-    { path, predecessor: lotContract, domain_id: config.near.signDomain },
-  );
-  return evmAddressFromNearKey(key);
-}
+/**
+ * The lot address depends on the lot contract account and the path. Moving either orphans the lot.
+ * MPC derives it deterministically, so each (contract, path) is asked once per process.
+ */
+export const fetchLotAddress = pMemoize(
+  async (lotContract: string, path: string): Promise<Address> => {
+    const key = await nearView<string>(
+      config.near.mpcSigner,
+      "derived_public_key",
+      { path, predecessor: lotContract, domain_id: config.near.signDomain },
+    );
+    return evmAddressFromNearKey(key);
+  },
+  { cacheKey: JSON.stringify },
+);
