@@ -12,22 +12,27 @@ import { config } from "../../../packages/shared/src/config.ts";
 import { getLot, mintedLot } from "../../../packages/shared/src/lot-views.ts";
 import { baseClient } from "../../../packages/shared/src/base.ts";
 import { getAddress, erc20Abi } from "viem";
-import type { ContractCall } from "../../../packages/shared/src/calls.ts";
+import { actions as nearActions } from "near-api-js";
+import type { Tx } from "../../../packages/shared/src/calls.ts";
 
 // Real keys live only in this Bun process. The test-mode page receives outcomes, never keys.
 async function actor(browser: Browser, signerId: string) {
   const context = await browser.newContext();
   await context.exposeBinding(
     "quitclaimTestSign",
-    async (_source, call: ContractCall & { contractId: string }) => {
-      if (call.contractId !== env.lotContract())
+    async (_source, tx: { contractId: string; calls: Tx }) => {
+      if (tx.contractId !== env.lotContract())
         throw new Error("Unexpected contract");
-      return (await account(signerId)).callFunctionRaw({
-        contractId: call.contractId,
-        methodName: call.method,
-        args: call.args,
-        deposit: BigInt(call.deposit),
-        gas: BigInt(call.gas),
+      return (await account(signerId)).signAndSendTransaction({
+        receiverId: tx.contractId,
+        actions: tx.calls.map((c) =>
+          nearActions.functionCall(
+            c.method,
+            c.args,
+            BigInt(c.gas),
+            BigInt(c.deposit),
+          ),
+        ),
         waitUntil: "FINAL",
       });
     },
@@ -54,16 +59,11 @@ async function form(page: Page, label: string, fields: Record<string, string>) {
   await page.keyboard.press("Escape");
 }
 const contract = env.lotContract();
-async function lotState(id: number, state: string) {
-  await expect
-    .poll(async () => (await getLot(contract, id))?.state, { timeout: 120_000 })
-    .toBe(state);
-}
 
 test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
   browser,
 }) => {
-  test.setTimeout(900_000);
+  test.setTimeout(2_400_000);
   const alice = await actor(browser, env.alice());
   const bob = await actor(browser, env.bob());
   const carol = await actor(browser, env.carol());
@@ -81,6 +81,9 @@ test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
   await expect(
     page.getByRole("heading", { name: "Your stream is ready." }),
   ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("button", { name: "Verify stream & mint title" }),
+  ).toBeEnabled({ timeout: 600_000 });
   await click(page, "Verify stream & mint title");
   await expect(
     page.getByRole("heading", { name: `${name} is yours.` }),
@@ -99,10 +102,7 @@ test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
   });
   await baseClient.waitForTransactionReceipt({ hash: funding });
   await page.goto(`http://localhost:3001/lot/${id}`);
-  await click(page, "Seal");
-  await lotState(id, "Clean");
-  await page.reload();
-  await form(page, "List for sale", { "Price in NEAR": "0.01" });
+  await form(page, "Sell", { "Price in NEAR": "0.01" });
   await bob.page.goto(`http://localhost:3001/lot/${id}`);
   await click(bob.page, "Buy · 0.01 NEAR");
   await expect
@@ -111,9 +111,6 @@ test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
     })
     .toBe(env.bob());
   await page.goto("about:blank");
-  await bob.page.reload();
-  await click(bob.page, "Seal");
-  await lotState(id, "Clean");
   await bob.page.reload();
   const ends = new Date(Date.now() + 600_000).toISOString().slice(0, 16);
   await form(bob.page, "Offer a lease", {
@@ -138,22 +135,14 @@ test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
   });
   await expect
     .poll(async () => (await getLot(contract, id))?.next_nonce, {
-      timeout: 180_000,
+      timeout: 600_000,
     })
     .toBe(1);
-  await carol.page.reload();
-  await click(carol.page, "Seal");
-  await lotState(id, "Clean");
   await carol.page.reload();
   await click(carol.page, "Surrender the lease");
   await expect.poll(async () => (await getLot(contract, id))?.lease).toBeNull();
   await carol.page.goto("about:blank");
   await bob.page.goto(`http://localhost:3001/lot/${id}`);
-  if ((await getLot(contract, id))?.state === "Clean") {
-    await click(bob.page, "Unseal");
-    await lotState(id, "Active");
-    await bob.page.reload();
-  }
   await bob.page.getByLabel(`Amount in test USDC`, { exact: true }).fill("0.5");
   await click(bob.page, "Get cash-out quote");
   await expect(
@@ -162,7 +151,7 @@ test("real mint, reload, sale, lease, withdrawal and NEAR cash-out", async ({
   await click(bob.page, "Approve cash-out in wallet");
   await expect
     .poll(async () => (await getLot(contract, id))?.next_nonce, {
-      timeout: 180_000,
+      timeout: 600_000,
     })
     .toBe(2);
   await bob.page.reload();

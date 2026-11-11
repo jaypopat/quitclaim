@@ -1,6 +1,12 @@
 import type { Address } from "viem";
 import type { FloorFees } from "./base.ts";
-import { contractCall, YOCTO, type ContractCall } from "./calls.ts";
+import {
+  after,
+  contractCall,
+  YOCTO,
+  type ContractCall,
+  type Tx,
+} from "./calls.ts";
 import { controller, leaseRunOut, liveLease } from "./control.ts";
 import type { Lot } from "./lot.gen.ts";
 import { nextFees } from "./lot.ts";
@@ -20,22 +26,15 @@ export type LotAction =
   | { kind: "buy"; call: ContractCall<"buy"> }
   | { kind: "take-lease"; call: ContractCall<"take_lease"> }
   | { kind: "delist"; call: ContractCall<"delist"> }
-  | { kind: "unseal"; call: ContractCall<"unseal"> }
-  | { kind: "surrender-lease"; call: ContractCall<"surrender_lease"> }
+  | { kind: "surrender-lease"; call: Tx }
   | { kind: "end-lease"; call: ContractCall<"end_lease"> }
-  | { kind: "list"; call: (price: bigint) => ContractCall<"list"> }
+  | { kind: "list"; call: (price: bigint) => Tx }
   | {
       kind: "offer-lease";
-      call: (offer: {
-        price: bigint;
-        endsAtMs: number;
-      }) => ContractCall<"offer_lease">;
+      call: (offer: { price: bigint; endsAtMs: number }) => Tx;
     }
   | { kind: "seal"; call: (floor: FloorFees) => ContractCall<"seal"> }
-  | {
-      kind: "withdraw";
-      call: (w: Withdrawal) => ContractCall<"request_transfer">;
-    };
+  | { kind: "withdraw"; call: (w: Withdrawal) => Tx };
 
 type Role = "controller" | "owner" | "lease-holder" | "anyone";
 type Ctx = { id: number; viewer: Viewer; nowMs: number };
@@ -58,6 +57,33 @@ const runningOut = (lot: Lot, nowMs: number) =>
 
 const canSign = (lot: Lot, nowMs: number) =>
   lot.state === "Active" && !lot.sign_in_flight && !runningOut(lot, nowMs);
+
+const unlisted = (lot: Lot) => !lot.listing && !lot.lease_offer;
+
+/** Sealing a lot with nothing issued makes it Clean in the same call, so a sale, lease offer or surrender can follow it in one transaction. */
+const fromClean = (lot: Lot, id: number, nowMs: number) => {
+  if (lot.state === "Clean" && unlisted(lot))
+    return (call: ContractCall): Tx => [call];
+  if (canSign(lot, nowMs) && !lot.issued.length)
+    return (call: ContractCall) =>
+      after(contractCall("seal", { id, fees: NO_FEES }, YOCTO), call);
+};
+
+/** `seal` reads fees only when it has a burn to sign, and a lot with nothing issued has none. */
+const NO_FEES = { max_fee: "0", max_prio: "0" };
+
+/** Unsealing returns a sealed, unlisted lot to Active, so a transfer can follow it in one transaction. */
+const toActive = (lot: Lot, id: number, nowMs: number) => {
+  if (canSign(lot, nowMs)) return (call: ContractCall): Tx => [call];
+  if (
+    (lot.state === "Sealing" || lot.state === "Clean") &&
+    unlisted(lot) &&
+    !runningOut(lot, nowMs) &&
+    lot.issued.every((i) => i.nonce === lot.next_nonce)
+  )
+    return (call: ContractCall) =>
+      after(contractCall("unseal", { id }, YOCTO), call);
+};
 
 /** Who may do what, by lot state. The contract re-checks every condition; this only decides what to offer. */
 const rules: {
@@ -94,32 +120,33 @@ const rules: {
   },
   {
     who: "controller",
-    make: (lot, { id }) =>
-      lot.state === "Clean" && !lot.listing && !lot.lease_offer
-        ? {
-            kind: "list",
-            call: (price) =>
-              contractCall("list", { id, price: price.toString() }, YOCTO),
-          }
-        : undefined,
+    make: (lot, { id, nowMs }) => {
+      const tx = fromClean(lot, id, nowMs);
+      if (!tx) return;
+      return {
+        kind: "list",
+        call: (price) =>
+          tx(contractCall("list", { id, price: price.toString() }, YOCTO)),
+      };
+    },
   },
   {
     who: "owner",
-    make: (lot, { id, nowMs }) =>
-      lot.state === "Clean" &&
-      !liveLease(lot, nowMs) &&
-      !lot.listing &&
-      !lot.lease_offer
-        ? {
-            kind: "offer-lease",
-            call: ({ price, endsAtMs }) =>
-              contractCall(
-                "offer_lease",
-                { id, price: price.toString(), ends_at_ms: endsAtMs },
-                YOCTO,
-              ),
-          }
-        : undefined,
+    make: (lot, { id, nowMs }) => {
+      const tx = !liveLease(lot, nowMs) && fromClean(lot, id, nowMs);
+      if (!tx) return;
+      return {
+        kind: "offer-lease",
+        call: ({ price, endsAtMs }) =>
+          tx(
+            contractCall(
+              "offer_lease",
+              { id, price: price.toString(), ends_at_ms: endsAtMs },
+              YOCTO,
+            ),
+          ),
+      };
+    },
   },
   {
     who: "controller",
@@ -130,29 +157,32 @@ const rules: {
   },
   {
     who: "controller",
-    make: (lot, { id, nowMs }) =>
-      canSign(lot, nowMs)
-        ? {
-            kind: "withdraw",
-            call: ({ to, amount, gasLimit, floor }) =>
-              contractCall(
-                "request_transfer",
-                {
-                  id,
-                  to,
-                  amount: amount.toString(),
-                  gas_limit: gasLimit,
-                  fees: nextFees(lot.issued, lot.next_nonce, floor),
-                },
-                YOCTO,
-              ),
-          }
-        : undefined,
+    make: (lot, { id, nowMs }) => {
+      const tx = toActive(lot, id, nowMs);
+      if (!tx) return;
+      return {
+        kind: "withdraw",
+        call: ({ to, amount, gasLimit, floor }) =>
+          tx(
+            contractCall(
+              "request_transfer",
+              {
+                id,
+                to,
+                amount: amount.toString(),
+                gas_limit: gasLimit,
+                fees: nextFees(lot.issued, lot.next_nonce, floor),
+              },
+              YOCTO,
+            ),
+          ),
+      };
+    },
   },
   {
     who: "controller",
     make: (lot, { id, nowMs }) =>
-      canSign(lot, nowMs) ? seal(lot, id) : undefined,
+      canSign(lot, nowMs) && lot.issued.length ? seal(lot, id) : undefined,
   },
   {
     who: "anyone",
@@ -162,23 +192,18 @@ const rules: {
         : undefined,
   },
   {
-    who: "controller",
-    make: (lot, { id, nowMs }) =>
-      (lot.state === "Sealing" || lot.state === "Clean") &&
-      !runningOut(lot, nowMs) &&
-      lot.issued.every((i) => i.nonce === lot.next_nonce)
-        ? { kind: "unseal", call: contractCall("unseal", { id }, YOCTO) }
-        : undefined,
-  },
-  {
     who: "lease-holder",
-    make: (lot, { id }) =>
-      lot.state === "Clean"
-        ? {
-            kind: "surrender-lease",
-            call: contractCall("surrender_lease", { id }, YOCTO),
-          }
-        : undefined,
+    make: (lot, { id, nowMs }) => {
+      const tx =
+        lot.state === "Clean"
+          ? (call: ContractCall): Tx => [call]
+          : fromClean(lot, id, nowMs);
+      if (!tx) return;
+      return {
+        kind: "surrender-lease",
+        call: tx(contractCall("surrender_lease", { id }, YOCTO)),
+      };
+    },
   },
   {
     who: "anyone",

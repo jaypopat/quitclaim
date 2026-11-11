@@ -82,11 +82,9 @@ export const reachedQuery = (block: bigint) =>
     refetchInterval: ({ state: { data } }) => (data?.reached ? false : 5_000),
   });
 
-/** Polls until the title for `path` appears in `owner`'s tokens. */
+/** The title minted for `path` in `owner`'s tokens, if any. */
 export const mintedLotQuery = (owner: string, path: string) =>
   queryOptions({
     queryKey: ["minted", LOT_CONTRACT, owner, path],
     queryFn: () => mintedLot(LOT_CONTRACT, owner, path),
-    refetchInterval: ({ state: { data } }) =>
-      data === undefined || data === null ? 4_000 : false,
   });

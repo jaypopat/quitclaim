@@ -51,7 +51,12 @@ if (import.meta.main) {
   const watch = Bun.argv.includes("--watch");
   const log = logger.child({ command: "keeper", contract });
   do {
-    for (const id of await pending(contract)) {
+    const ids = await pending(contract).catch((err: unknown) => {
+      if (!watch) throw err;
+      log.error({ err }, "Finding pending lots failed; retrying next pass");
+      return [];
+    });
+    for (const id of ids) {
       try {
         const r = await settle(contract, prover, id);
         log.info(

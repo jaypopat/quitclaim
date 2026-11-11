@@ -21,6 +21,8 @@ const find = <K extends LotAction["kind"]>(
 };
 
 const GAS = teraToGas(300);
+const PREP = teraToGas(20);
+const AFTER = teraToGas(280);
 const floor = { maxFee: 2_000n, maxPrio: 200n };
 const clean = (o: Partial<Lot> = {}) => lot({ state: "Clean", ...o });
 const lease = (endsMs = NOW + 60_000) => ({
@@ -31,19 +33,47 @@ const lease = (endsMs = NOW + 60_000) => ({
 });
 
 describe("an Active lot", () => {
-  test("its owner may withdraw or seal, and nobody else may do anything", () => {
-    expect(kinds(lot(), "alice.testnet")).toEqual(["withdraw", "seal"]);
+  test("its owner may sell, offer a lease or withdraw, and nobody else may do anything", () => {
+    expect(kinds(lot(), "alice.testnet")).toEqual([
+      "list",
+      "offer-lease",
+      "withdraw",
+    ]);
     expect(kinds(lot(), "bob.testnet")).toEqual([]);
     expect(kinds(lot(), null)).toEqual([]);
   });
 
-  test("seal and withdraw price fees over everything issued at the nonce", () => {
+  test("with nothing issued, selling seals and lists in one transaction", () => {
+    expect(find(lot(), "alice.testnet", "list").call(6n)).toEqual([
+      {
+        method: "seal",
+        args: { id: 4, fees: { max_fee: "0", max_prio: "0" } },
+        deposit: 1n,
+        gas: PREP,
+      },
+      { method: "list", args: { id: 4, price: "6" }, deposit: 1n, gas: AFTER },
+    ]);
+    expect(
+      find(lot(), "alice.testnet", "offer-lease").call({
+        price: 4n,
+        endsAtMs: NOW + 1000,
+      })[1],
+    ).toEqual({
+      method: "offer_lease",
+      args: { id: 4, price: "4", ends_at_ms: NOW + 1000 },
+      deposit: 1n,
+      gas: AFTER,
+    });
+  });
+
+  test("with a signature outstanding it must be burned before a sale", () => {
     const l = lot({
       next_nonce: 2,
       issued: [
         issued({ nonce: 2, fees: { max_fee: "5000", max_prio: "500" } }),
       ],
     });
+    expect(kinds(l, "alice.testnet")).toEqual(["withdraw", "seal"]);
     expect(find(l, "alice.testnet", "seal").call(floor)).toEqual({
       method: "seal",
       args: { id: 4, fees: { max_fee: "5501", max_prio: "551" } },
@@ -58,18 +88,20 @@ describe("an Active lot", () => {
         gasLimit: 60_000,
         floor,
       }),
-    ).toEqual({
-      method: "request_transfer",
-      args: {
-        id: 4,
-        to,
-        amount: "25000000",
-        gas_limit: 60_000,
-        fees: { max_fee: "5501", max_prio: "551" },
+    ).toEqual([
+      {
+        method: "request_transfer",
+        args: {
+          id: 4,
+          to,
+          amount: "25000000",
+          gas_limit: 60_000,
+          fees: { max_fee: "5501", max_prio: "551" },
+        },
+        deposit: 1n,
+        gas: GAS,
       },
-      deposit: 1n,
-      gas: GAS,
-    });
+    ]);
   });
 
   test("nothing can sign while a sign request is in flight", () => {
@@ -78,8 +110,18 @@ describe("an Active lot", () => {
 
   test("the lessee controls it during a lease, not the owner", () => {
     const leased = lot({ lease: lease() });
-    expect(kinds(leased, "bob.testnet")).toEqual(["withdraw", "seal"]);
+    expect(kinds(leased, "bob.testnet")).toEqual([
+      "list",
+      "withdraw",
+      "surrender-lease",
+    ]);
     expect(kinds(leased, "alice.testnet")).toEqual([]);
+    expect(find(leased, "bob.testnet", "surrender-lease").call[1]).toEqual({
+      method: "surrender_lease",
+      args: { id: 4 },
+      deposit: 1n,
+      gas: AFTER,
+    });
   });
 
   test("once the lease runs out anyone may seal and the lessee may not withdraw", () => {
@@ -91,9 +133,9 @@ describe("an Active lot", () => {
 });
 
 describe("a Sealing lot", () => {
-  test("its controller may unseal unless a rescue burn is outstanding", () => {
+  test("its controller may unseal and send in one transaction unless a rescue burn is outstanding", () => {
     const sealing = lot({ state: "Sealing", issued: [issued()] });
-    expect(kinds(sealing, "alice.testnet")).toEqual(["unseal"]);
+    expect(kinds(sealing, "alice.testnet")).toEqual(["withdraw"]);
     const rescued = lot({
       state: "Sealing",
       issued: [issued(), issued({ seq: 1, nonce: 1 })],
@@ -103,31 +145,25 @@ describe("a Sealing lot", () => {
 });
 
 describe("a Clean lot", () => {
-  test("its owner may list, offer a lease, or unseal", () => {
+  test("its owner may sell, offer a lease, or unseal and send in one transaction", () => {
     expect(kinds(clean(), "alice.testnet")).toEqual([
       "list",
       "offer-lease",
-      "unseal",
+      "withdraw",
     ]);
-    expect(
-      find(clean(), "alice.testnet", "list").call(6n * 10n ** 24n),
-    ).toEqual({
-      method: "list",
-      args: { id: 4, price: "6000000000000000000000000" },
-      deposit: 1n,
-      gas: GAS,
+    expect(find(clean(), "alice.testnet", "list").call(6n)).toEqual([
+      { method: "list", args: { id: 4, price: "6" }, deposit: 1n, gas: GAS },
+    ]);
+    const sent = find(clean(), "alice.testnet", "withdraw").call({
+      to: "0x000000000000000000000000000000000000a11c",
+      amount: 1n,
+      gasLimit: 60_000,
+      floor,
     });
-    expect(
-      find(clean(), "alice.testnet", "offer-lease").call({
-        price: 4n,
-        endsAtMs: NOW + 1000,
-      }),
-    ).toEqual({
-      method: "offer_lease",
-      args: { id: 4, price: "4", ends_at_ms: NOW + 1000 },
-      deposit: 1n,
-      gas: GAS,
-    });
+    expect(sent.map((c) => [c.method, c.gas])).toEqual([
+      ["unseal", PREP],
+      ["request_transfer", AFTER],
+    ]);
   });
 
   test("a listing is bought at its exact price and the version the buyer saw", () => {
@@ -142,7 +178,7 @@ describe("a Clean lot", () => {
       deposit: 9n,
       gas: GAS,
     });
-    expect(kinds(listed, "alice.testnet")).toEqual(["delist", "unseal"]);
+    expect(kinds(listed, "alice.testnet")).toEqual(["delist"]);
   });
 
   test("a listing bound to an older version can't be bought", () => {
@@ -160,7 +196,7 @@ describe("a Clean lot", () => {
       deposit: 4n,
       gas: GAS,
     });
-    expect(kinds(offered, "alice.testnet")).toEqual(["delist", "unseal"]);
+    expect(kinds(offered, "alice.testnet")).toEqual(["delist"]);
     expect(kinds(offered, "carol.testnet", NOW + 5000)).toEqual([]);
   });
 
@@ -168,7 +204,7 @@ describe("a Clean lot", () => {
     const leased = clean({ lease: lease() });
     expect(kinds(leased, "bob.testnet")).toEqual([
       "list",
-      "unseal",
+      "withdraw",
       "surrender-lease",
     ]);
     expect(kinds(leased, "alice.testnet")).toEqual([]);
@@ -179,7 +215,6 @@ describe("a Clean lot", () => {
     expect(kinds(listedLease, "alice.testnet")).toEqual(["buy"]);
     expect(kinds(listedLease, "bob.testnet")).toEqual([
       "delist",
-      "unseal",
       "surrender-lease",
     ]);
   });
@@ -196,7 +231,7 @@ describe("a Clean lot", () => {
     expect(kinds(over, "alice.testnet")).toEqual([
       "list",
       "offer-lease",
-      "unseal",
+      "withdraw",
       "end-lease",
     ]);
   });
