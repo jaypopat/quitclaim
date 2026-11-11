@@ -29,8 +29,8 @@ export function ListForm({ action, send }: { action: Of<"list">; send: Send }) {
   });
   return (
     <ActionDialog
-      label="List for sale"
-      description="Anyone can buy at this price while the lot stays Clean. The minter's royalty comes out of it."
+      label="Sell"
+      description="One approval seals the lot and lists it, so nothing new can be signed for it. Anyone can buy at this price. The minter's royalty comes out of it."
       pending={send.isPending}
       onSubmit={form.handleSubmit}
     >
@@ -63,7 +63,7 @@ export function OfferLeaseForm({
   return (
     <ActionDialog
       label="Offer a lease"
-      description="The lessee controls the lot until the end date and can withdraw only what vests in that time. The title stays yours."
+      description="One approval seals the lot and posts the offer. The lessee controls the lot until the end date and can withdraw only what vests in that time. The title stays yours."
       pending={send.isPending}
       onSubmit={form.handleSubmit}
     >

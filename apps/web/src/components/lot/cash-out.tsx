@@ -102,12 +102,14 @@ export function CashOut({
           fresh.owner !== lot.owner ||
           fresh.version !== lot.version ||
           fresh.lease ||
-          fresh.state !== "Active" ||
+          fresh.state === "Sealing" ||
+          fresh.listing ||
+          fresh.lease_offer ||
           fresh.issued.length ||
           fresh.sign_in_flight
         )
           throw new Error(
-            "Cash-out requires an Active, unleased lot with nothing issued. Refresh the lot first.",
+            "Cash-out requires an unlisted, unleased lot with nothing issued. Refresh the lot first.",
           );
         const fromBlock = await baseClient.getBlockNumber();
         const result = await quote(units, view.address, lot.owner);
@@ -297,7 +299,7 @@ export function CashOut({
           )}
           {!ready && (
             <p className="text-xs text-muted-foreground">
-              Unseal the lot and settle outstanding transactions first.
+              Cancel any offer and let outstanding transactions settle first.
             </p>
           )}
         </>

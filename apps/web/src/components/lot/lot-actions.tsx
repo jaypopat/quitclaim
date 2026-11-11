@@ -13,11 +13,10 @@ import { ListForm, OfferLeaseForm, WithdrawForm } from "./action-forms.tsx";
 const LABEL: Record<LotAction["kind"], string> = {
   buy: "Buy",
   "take-lease": "Take the lease",
-  delist: "Withdraw the offer",
-  unseal: "Unseal",
+  delist: "Cancel the offer",
   "surrender-lease": "Surrender the lease",
   "end-lease": "End the lease",
-  seal: "Seal",
+  seal: "Burn old signatures",
   list: "List for sale",
   "offer-lease": "Offer a lease",
   withdraw: "Withdraw",
@@ -72,7 +71,8 @@ export function LotActions({ view }: { view: LotView }) {
                 {LABEL.seal}
               </Button>
             );
-          default:
+          default: {
+            const price = [action.call].flat().at(-1)?.deposit ?? 0n;
             return (
               <Button
                 key={action.kind}
@@ -81,10 +81,10 @@ export function LotActions({ view }: { view: LotView }) {
                 onClick={() => send.mutate(() => action.call)}
               >
                 {LABEL[action.kind]}
-                {action.call.deposit > 1n &&
-                  ` · ${formatNear(action.call.deposit)} NEAR`}
+                {price > 1n && ` · ${formatNear(price)} NEAR`}
               </Button>
             );
+          }
         }
       })}
     </div>

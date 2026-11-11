@@ -23,3 +23,14 @@ export const contractCall = <M extends keyof LotCalls>(
   args: LotCalls[M]["args"],
   deposit = 0n,
 ): ContractCall<M> => ({ method, args, deposit, gas: teraToGas(CALL_TGAS) });
+
+/** Calls signed together in one transaction: they run in order and roll back together. */
+export type Tx = ContractCall[];
+
+/** A free state change ahead of `call` in the same transaction, sized so the pair fits one transaction's gas. */
+export const after = (first: ContractCall, call: ContractCall): Tx => [
+  { ...first, gas: teraToGas(PREP_TGAS) },
+  { ...call, gas: teraToGas(CALL_TGAS - PREP_TGAS) },
+];
+
+const PREP_TGAS = 20;

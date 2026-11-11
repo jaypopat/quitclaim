@@ -20,7 +20,7 @@ export function useWallet() {
       : null;
   return {
     signOut: wallet.signOut,
-    callFunctionRaw: wallet.callFunctionRaw,
+    signAndSendTransaction: wallet.signAndSendTransaction,
     signedAccountId: testAccount || wallet.signedAccountId || null,
     // React supplies a click event; the SDK's optional argument is access-key configuration.
     signIn: () =>

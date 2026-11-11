@@ -1,7 +1,8 @@
 import { useWallet } from "./wallet.tsx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ContractCall } from "@quitclaim/shared/calls.ts";
+import type { ContractCall, Tx } from "@quitclaim/shared/calls.ts";
 import { nearProvider, nearTxUrl } from "@quitclaim/shared/near.ts";
+import { Actions } from "near-connect-hooks";
 import { getTransactionLastResult } from "near-api-js";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -9,33 +10,39 @@ import { LOT_CONTRACT } from "./contract.ts";
 
 declare global {
   interface Window {
-    quitclaimTestSign?: (
-      call: ContractCall & { contractId: string },
-    ) => Promise<unknown>;
+    quitclaimTestSign?: (tx: {
+      contractId: string;
+      calls: Tx;
+    }) => Promise<unknown>;
   }
 }
 const submitted = z.object({ transaction: z.object({ hash: z.string() }) });
 
-/** Build one call, approve it in the wallet, then wait for its MPC callbacks before re-reading. */
+/** Build one transaction, approve it in the wallet, then wait for its MPC callbacks before re-reading. */
 export function useSend() {
-  const { callFunctionRaw, signedAccountId } = useWallet();
+  const { signAndSendTransaction, signedAccountId } = useWallet();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (build: () => ContractCall | Promise<ContractCall>) => {
+    mutationFn: async (
+      build: () => ContractCall | Tx | Promise<ContractCall | Tx>,
+    ) => {
       if (!signedAccountId) throw new Error("Connect a wallet first.");
-      const call = await build();
+      const built = await build();
+      const calls = Array.isArray(built) ? built : [built];
+      const method = calls.map((c) => c.method).join(" + ");
       const raw =
         import.meta.env.MODE === "browser-test" && window.quitclaimTestSign
-          ? await window.quitclaimTestSign({
-              ...call,
-              contractId: LOT_CONTRACT,
-            })
-          : await callFunctionRaw({
-              contractId: LOT_CONTRACT,
-              method: call.method,
-              args: { ...call.args },
-              gas: String(call.gas),
-              deposit: String(call.deposit),
+          ? await window.quitclaimTestSign({ contractId: LOT_CONTRACT, calls })
+          : await signAndSendTransaction({
+              receiverId: LOT_CONTRACT,
+              actions: calls.map((c) =>
+                Actions.functionCall(
+                  c.method,
+                  { ...c.args },
+                  String(c.gas),
+                  String(c.deposit),
+                ),
+              ),
             });
       // Wallets may return before execution finishes. A pending callback is not a failed mint.
       const { transaction } = submitted.parse(raw);
@@ -47,10 +54,10 @@ export function useSend() {
       const url = nearTxUrl(transaction.hash);
       if (typeof result.status === "object" && "Failure" in result.status)
         throw new Error(
-          `${call.method} failed: ${JSON.stringify(result.status.Failure)} ${url}`,
+          `${method} failed: ${JSON.stringify(result.status.Failure)} ${url}`,
         );
       return {
-        method: call.method,
+        method,
         url,
         value: getTransactionLastResult(result),
       };
