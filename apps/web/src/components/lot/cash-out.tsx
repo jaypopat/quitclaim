@@ -3,6 +3,7 @@ import { useState } from "react";
 import { erc20Abi, formatUnits, isHash } from "viem";
 import type { LotAction } from "@quitclaim/shared/actions.ts";
 import {
+  baseAddressUrl,
   baseClient,
   estimateTransferGas,
   floorFees,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readCashOut, saveCashOut, useCashOutRecord } from "@/lib/cash-out.ts";
 import { LOT_CONTRACT } from "@/lib/contract.ts";
+import { dateTime, formatToken, shortAddress } from "@/lib/format.ts";
 import { tokenAmount } from "@/lib/inputs.ts";
 import type { useSend } from "@/lib/use-send.ts";
 
@@ -140,14 +142,38 @@ export function CashOut({
       </p>
       {record ? (
         <>
-          <p className="text-sm break-all">
-            {formatUnits(BigInt(record.amount), 6)} USDC → approximately{" "}
-            {formatUnits(BigInt(record.payout), 24)} test wNEAR to{" "}
-            {record.recipient}
-          </p>
-          <p className="font-mono text-xs break-all">
-            Deposit: {record.depositAddress}
-          </p>
+          <dl className="flex flex-col">
+            {(
+              [
+                ["You send", `${formatToken(BigInt(record.amount), 6)} USDC`],
+                [
+                  "You get about",
+                  `${formatToken(BigInt(record.payout), 24)} test wNEAR`,
+                ],
+                ["Paid to", record.recipient],
+                [
+                  "Tidepool deposit",
+                  <a
+                    className="font-mono underline-offset-4 hover:underline"
+                    href={baseAddressUrl(record.depositAddress)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {shortAddress(record.depositAddress)}
+                  </a>,
+                ],
+                ["Quote expires", dateTime(Date.parse(record.deadline))],
+              ] as const
+            ).map(([label, value]) => (
+              <div
+                key={label}
+                className="flex justify-between gap-4 border-b py-2 text-sm"
+              >
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="text-right break-all">{value}</dd>
+              </div>
+            ))}
+          </dl>
           {record.approvalStarted ? (
             <>
               <p role="status" className="text-sm">
@@ -172,9 +198,6 @@ export function CashOut({
             </>
           ) : (
             <>
-              <p className="text-xs">
-                Quote expires {new Date(record.deadline).toLocaleString()}.
-              </p>
               <Button
                 disabled={
                   !ready ||
