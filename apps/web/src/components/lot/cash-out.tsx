@@ -3,6 +3,7 @@ import { useState } from "react";
 import { erc20Abi, formatUnits, isHash } from "viem";
 import type { LotAction } from "@quitclaim/shared/actions.ts";
 import {
+  baseAddressUrl,
   baseClient,
   estimateTransferGas,
   floorFees,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readCashOut, saveCashOut, useCashOutRecord } from "@/lib/cash-out.ts";
 import { LOT_CONTRACT } from "@/lib/contract.ts";
+import { dateTime, formatToken, shortAddress } from "@/lib/format.ts";
 import { tokenAmount } from "@/lib/inputs.ts";
 import type { useSend } from "@/lib/use-send.ts";
 
@@ -35,7 +37,9 @@ export function CashOut({
   send: ReturnType<typeof useSend>;
 }) {
   const { id, lot } = view;
-  const [amount, setAmount] = useState("");
+  // Defaults to everything the address holds, following live balance until edited.
+  const [edited, setAmount] = useState<string>();
+  const amount = edited ?? formatUnits(view.base.held, view.token.decimals);
   const record = useCashOutRecord(id);
   const status = useQuery({
     queryKey: ["cash-out-status", record?.depositAddress],
@@ -82,6 +86,12 @@ export function CashOut({
   const prepare = useMutation({
     mutationFn: () =>
       navigator.locks.request(`cash-out:${LOT_CONTRACT}:${id}`, async () => {
+        const parsed = tokenAmount(
+          view.token.decimals,
+          view.base.held,
+        ).safeParse(amount);
+        if (!parsed.success) throw new Error(parsed.error.issues[0]?.message);
+        const units = parsed.data;
         if (readCashOut(id))
           throw new Error(
             "This lot already has a recorded quote. Resolve it before requesting another.",
@@ -99,9 +109,6 @@ export function CashOut({
           throw new Error(
             "Cash-out requires an Active, unleased lot with nothing issued. Refresh the lot first.",
           );
-        const units = tokenAmount(view.token.decimals, view.base.held).parse(
-          amount,
-        );
         const fromBlock = await baseClient.getBlockNumber();
         const result = await quote(units, view.address, lot.owner);
         if (BigInt(result.quote.amountIn) !== units)
@@ -135,14 +142,38 @@ export function CashOut({
       </p>
       {record ? (
         <>
-          <p className="text-sm break-all">
-            {formatUnits(BigInt(record.amount), 6)} USDC → approximately{" "}
-            {formatUnits(BigInt(record.payout), 24)} test wNEAR to{" "}
-            {record.recipient}
-          </p>
-          <p className="font-mono text-xs break-all">
-            Deposit: {record.depositAddress}
-          </p>
+          <dl className="flex flex-col">
+            {(
+              [
+                ["You send", `${formatToken(BigInt(record.amount), 6)} USDC`],
+                [
+                  "You get about",
+                  `${formatToken(BigInt(record.payout), 24)} test wNEAR`,
+                ],
+                ["Paid to", record.recipient],
+                [
+                  "Tidepool deposit",
+                  <a
+                    className="font-mono underline-offset-4 hover:underline"
+                    href={baseAddressUrl(record.depositAddress)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {shortAddress(record.depositAddress)}
+                  </a>,
+                ],
+                ["Quote expires", dateTime(Date.parse(record.deadline))],
+              ] as const
+            ).map(([label, value]) => (
+              <div
+                key={label}
+                className="flex justify-between gap-4 border-b py-2 text-sm"
+              >
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="text-right break-all">{value}</dd>
+              </div>
+            ))}
+          </dl>
           {record.approvalStarted ? (
             <>
               <p role="status" className="text-sm">
@@ -167,9 +198,6 @@ export function CashOut({
             </>
           ) : (
             <>
-              <p className="text-xs">
-                Quote expires {new Date(record.deadline).toLocaleString()}.
-              </p>
               <Button
                 disabled={
                   !ready ||

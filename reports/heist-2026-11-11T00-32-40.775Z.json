@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "recordedAt": "2026-11-11T00:32:40.775Z",
+  "report": "e2e-handover-2026-11-11T00-32-40.775Z.md",
+  "contract": "quitclaim.testnet",
+  "codeHash": "5XQLuHe2eSnBCzVwBKUErs82zEPzXRbZxxWk9GUMukU2",
+  "finality": "Safe",
+  "recordedFullAccessKeys": 1,
+  "chainId": 84532,
+  "lot": {
+    "id": 2,
+    "address": "0x9b6cE3245CF5D715BEEdDdF697c09E650E7eD6C7",
+    "token": "0x38d81431B9f76d9699AF7517040D5221D9dEA252"
+  },
+  "seller": {
+    "near": "quitclaim-spike-43135.testnet",
+    "evm": "0x000000000000000000000000000000000000a11c"
+  },
+  "buyer": {
+    "near": "bob.quitclaim-spike-43135.testnet",
+    "evm": "0x0000000000000000000000000000000000000b0b"
+  },
+  "retained": "0x02f8b083014a3401830f424083a7d8c082b0949438d81431b9f76d9699af7517040d5221d9dea25280b844a9059cbb000000000000000000000000000000000000000000000000000000000000a11c000000000000000000000000000000000000000000000000000000000006e8aac080a0f133f454fd196e08e38dce517c159ae53475320295b7baf6eaf403dd6f1bda4da04e5b0669821847b5dc2966e4942c110de6839c7e93d1d047f1fb5051b4bb333a",
+  "consumingTx": "0xfea518dcfa71c8ab8be27b1ac47113e8f3f361d3d8ef88b12f63bfc444b9120f",
+  "proof": {
+    "hash": "62p8FSxwKYbkf1bUkdGrgntKrLHGWxRhTo8rGb9ALw8f",
+    "signer": "bob.quitclaim-spike-43135.testnet"
+  },
+  "sale": {
+    "hash": "G7ZryHuHB7gFgLLr4uRnQo1UeKTVSfXjEHAp7V9YAjab",
+    "signer": "bob.quitclaim-spike-43135.testnet"
+  },
+  "buyerWithdrawal": "0xb3c7d0ac1cba600f5afdcc41f45ae65ae1c5d3319f19a6ff6f3950bedfcad599"
+}

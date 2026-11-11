@@ -32,9 +32,6 @@ export function Layout() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-              testnet
-            </span>
             <ThemeToggle />
             <WalletButton />
           </div>
