@@ -35,7 +35,9 @@ export function CashOut({
   send: ReturnType<typeof useSend>;
 }) {
   const { id, lot } = view;
-  const [amount, setAmount] = useState("");
+  // Defaults to everything the address holds, following live balance until edited.
+  const [edited, setAmount] = useState<string>();
+  const amount = edited ?? formatUnits(view.base.held, view.token.decimals);
   const record = useCashOutRecord(id);
   const status = useQuery({
     queryKey: ["cash-out-status", record?.depositAddress],
@@ -82,6 +84,12 @@ export function CashOut({
   const prepare = useMutation({
     mutationFn: () =>
       navigator.locks.request(`cash-out:${LOT_CONTRACT}:${id}`, async () => {
+        const parsed = tokenAmount(
+          view.token.decimals,
+          view.base.held,
+        ).safeParse(amount);
+        if (!parsed.success) throw new Error(parsed.error.issues[0]?.message);
+        const units = parsed.data;
         if (readCashOut(id))
           throw new Error(
             "This lot already has a recorded quote. Resolve it before requesting another.",
@@ -99,9 +107,6 @@ export function CashOut({
           throw new Error(
             "Cash-out requires an Active, unleased lot with nothing issued. Refresh the lot first.",
           );
-        const units = tokenAmount(view.token.decimals, view.base.held).parse(
-          amount,
-        );
         const fromBlock = await baseClient.getBlockNumber();
         const result = await quote(units, view.address, lot.owner);
         if (BigInt(result.quote.amountIn) !== units)
