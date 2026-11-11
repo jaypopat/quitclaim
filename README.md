@@ -28,9 +28,9 @@ The stream must be created with the lot address as its recipient. Quitclaim cann
 
 Alice owned a lot paying out a Sablier stream. Before selling it to Bob she signed a withdrawal to herself and kept it. Then:
 
-1. Sealing the lot [burned her nonce on Base](https://sepolia.basescan.org/tx/0x1155eba522eb8bfc47fc7f4ad69782566131078ca87b2421f7de30455f933499).
-2. NEAR MPC [proved the burn](https://testnet.nearblocks.io/txns/HyjkRYt84RQcbDdjiqTHun83mkz8op4RgUrHWaG7KPJw).
-3. Bob [bought the title](https://testnet.nearblocks.io/txns/AS4Do5zxZATgCeBpFxEpAXRDch4QgdqwkW2c4Hequ3XA) and [withdrew to himself](https://sepolia.basescan.org/tx/0xc59f41515b1af3d8674f1cd20ff512d2bd2057052eb5070f852591886f2b793e).
+1. Sealing the lot [burned her nonce on Base](https://sepolia.basescan.org/tx/0xfea518dcfa71c8ab8be27b1ac47113e8f3f361d3d8ef88b12f63bfc444b9120f).
+2. NEAR MPC [proved the burn](https://testnet.nearblocks.io/txns/62p8FSxwKYbkf1bUkdGrgntKrLHGWxRhTo8rGb9ALw8f).
+3. Bob [bought the title](https://testnet.nearblocks.io/txns/G7ZryHuHB7gFgLLr4uRnQo1UeKTVSfXjEHAp7V9YAjab) and [withdrew to himself](https://sepolia.basescan.org/tx/0xb3c7d0ac1cba600f5afdcc41f45ae65ae1c5d3319f19a6ff6f3950bedfcad599).
 4. Alice broadcast her kept withdrawal. Base rejected it: `nonce too low`.
 
 To verify it yourself, with no wallet, keys or funds: `bun install && bun run heist`. The [judge guide](JUDGE.md) explains each check.
@@ -41,14 +41,14 @@ Run the web app locally. Browsing needs only the contract name, no keys:
 
 ```sh
 bun install
-printf 'LOT_CONTRACT=qc15.quitclaim-spike-43135.testnet\nVITE_LOT_CONTRACT=$LOT_CONTRACT\n' > .env
+printf 'LOT_CONTRACT=quitclaim.testnet\nVITE_LOT_CONTRACT=$LOT_CONTRACT\n' > .env
 bun run dev   # http://localhost:3000
 ```
 
 1. On the home page, press **Try live replay**. The app checks the published sale from public NEAR and Base RPCs, then broadcasts Alice's kept withdrawal. Base rejects it with `nonce too low`.
 2. Open **Market** and the 4-year grant listed at 4 NEAR. The chart shows its 1-year cliff. Under **Signatures**, nonce 0 is used, and **History** shows it proven consumed before the listing.
 3. Open the lot leased to Carol. The offer box shows who controls the address until the lease ends, and the title checks show it isn't sealed for transfer.
-4. Connect a NEAR testnet wallet with a few testnet NEAR and buy the stream that is nearly finished, listed at 0.4 NEAR. It moves to **Portfolio**, and the lot page lists you as owner of the same Base address.
+4. Connect a NEAR testnet wallet with a few testnet NEAR and buy the stream that is nearly finished, listed at 0.4 NEAR. It moves to **Portfolio**, and the lot page lists you as owner of the same Base address. If another judge bought it first, buy any listed lot.
 
 The market comes from `bun run seed`: six vesting scenarios on test USDC, from a fresh grant to a resold one.
 
@@ -86,7 +86,7 @@ Chain Signatures give the contract a native Base address it signs for under its 
 
 ## Limits
 
-- Trusts NEAR's MPC network. The final deployment proves at Base `Safe` finality and has its upgrade keys deleted.
+- Trusts NEAR's MPC network. `quitclaim.testnet` proves at Base `Safe` finality and has no access keys, so nobody can upgrade it. Check with `near account list-keys quitclaim.testnet network-config testnet now`.
 - The stream must pay a lot address from the start; existing wallets can't be imported.
 - Sablier Labs [is in maintenance mode](https://blog.sablier.com/sablier-labs-is-entering-maintenance-mode); its contracts still run on chain. Not affiliated with Sablier.
 - Testnet only. It demonstrates the mechanism; demand is unproven. A transferable stream, a Safe or ERC-6551 are genuine alternatives where the sender cooperates.
