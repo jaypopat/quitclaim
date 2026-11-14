@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { offer, position } from "@quitclaim/shared/derive.ts";
+import { offer } from "@quitclaim/shared/derive.ts";
+import { vested } from "@quitclaim/shared/vesting.ts";
 import { formatUnits } from "viem";
 import type { ReactNode } from "react";
 import { DitherNumber } from "@/components/dithercn/dither-number";
 import { ProgressBar } from "@/components/dithercn/progress-bar";
 import { LotField } from "@/components/lot-field.tsx";
 import { offerPrice } from "@/components/offer-price.tsx";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now.ts";
 import { formatPercent, formatToken, shortAddress } from "@/lib/format";
-import { lotQuery } from "@/lib/queries.ts";
+import { heroLotQuery } from "@/lib/queries.ts";
+import { Skeleton } from "@/components/ui/skeleton";
+import { HERO_SNAPSHOT } from "./hero-snapshot.ts";
 
 function Row({ chain, children }: { chain?: string; children: ReactNode }) {
   return (
@@ -38,12 +40,19 @@ function Wire({ label, up = false }: { label: string; up?: boolean }) {
 
 /** A real lot from the deployed contract: the stream pays an address, and the title decides who signs for it. */
 export function HeroLot({ id }: { id: number }) {
-  const { data: view } = useQuery(lotQuery(id));
+  // A baked copy of the lot paints at once; the live read replaces it a moment later.
+  const { data } = useQuery({
+    ...heroLotQuery(id),
+    placeholderData: id === HERO_SNAPSHOT.id ? HERO_SNAPSHOT : undefined,
+  });
   const now = useNow();
-  if (!view) return <Skeleton className="h-[420px]" />;
-  const pos = position(view, now / 1000);
-  const { decimals, symbol } = view.token;
-  const current = offer(view.lot, now);
+  if (!data) return <Skeleton className="h-[420px]" />;
+  const { lot, address, token } = data;
+  const { decimals, symbol } = token;
+  const deposit = BigInt(lot.source.schedule.deposit);
+  const vestedNow = vested(lot.source.schedule, now / 1000);
+  const vestedFraction = Number((vestedNow * 10_000n) / deposit) / 10_000;
+  const current = offer(lot, now);
   const { price, note } = offerPrice(current);
   return (
     <Link
@@ -54,7 +63,7 @@ export function HeroLot({ id }: { id: number }) {
       <Row chain="SOURCE">
         <div className="flex flex-col gap-1 border p-4">
           <span className="font-mono text-xs text-muted-foreground">
-            SABLIER STREAM #{view.lot.source.id}
+            SABLIER STREAM #{lot.source.id}
           </span>
           <span className="text-sm">
             Non-cancelable, non-transferable. It only ever pays one address.
@@ -66,14 +75,14 @@ export function HeroLot({ id }: { id: number }) {
         <div className="flex flex-col gap-2 border border-primary p-4">
           <span className="flex flex-wrap justify-between gap-x-3 font-mono text-xs">
             <span className="text-primary">ADDRESS · NO PRIVATE KEY</span>
-            <span>{shortAddress(view.address)}</span>
+            <span>{shortAddress(address)}</span>
           </span>
           <span className="font-mono text-xs text-muted-foreground">
             VESTED SO FAR · {symbol}
           </span>
           <DitherNumber
-            value={Number(formatUnits(pos.deposit - pos.locked, decimals))}
-            from={Number(formatUnits(pos.deposit - pos.locked, decimals))}
+            value={Number(formatUnits(vestedNow, decimals))}
+            from={Number(formatUnits(vestedNow, decimals))}
             format={{
               minimumFractionDigits: decimals,
               maximumFractionDigits: decimals,
@@ -81,15 +90,15 @@ export function HeroLot({ id }: { id: number }) {
             size="md"
           />
           <span className="flex flex-wrap justify-between gap-x-3 text-sm">
-            <span>{formatPercent(pos.vestedFraction)} vested</span>
+            <span>{formatPercent(vestedFraction)} vested</span>
             <span className="text-muted-foreground">
-              {formatToken(pos.locked, decimals)} {symbol} to come
+              {formatToken(deposit - vestedNow, decimals)} {symbol} to come
             </span>
           </span>
           <ProgressBar
             label="Vested"
             hideLabel
-            value={pos.vestedFraction}
+            value={vestedFraction}
             max={1}
             size="sm"
           />
@@ -109,7 +118,7 @@ export function HeroLot({ id }: { id: number }) {
               NFT TITLE · QUITCLAIM #{id}
             </span>
             <span className="truncate font-mono text-xs text-muted-foreground">
-              owner {view.lot.owner}
+              owner {lot.owner}
             </span>
           </span>
           <span className="shrink-0 sm:text-right">
