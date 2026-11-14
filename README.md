@@ -6,6 +6,8 @@ A Quitclaim NFT is the title to a Base address receiving a token stream. Sell th
 
 Locked tokens already change hands over the counter, settled on trust. Buy someone's wallet and you can never be sure they didn't keep the key, or a withdrawal they signed before the sale.
 
+**Live app:** https://quitclaim-web.jaypopat.me (NEAR testnet + Base Sepolia, contract `quitclaim.testnet`, frozen).
+
 Quitclaim makes the handover provable. A NEP-171 NFT on NEAR controls a Base Sepolia address through NEAR Chain Signatures, and no one ever holds its key. Before control changes hands, the contract burns the seller's outstanding Base nonce and NEAR MPC proves the burn landed. Anything the seller kept is now invalid.
 
 ## Sell the title or lease the unlocks
@@ -37,7 +39,7 @@ To verify it yourself, with no wallet, keys or funds: `bun install && bun run he
 
 ## Try it in the browser
 
-Run the web app locally. Browsing needs only the contract name, no keys:
+Open https://quitclaim-web.jaypopat.me, or run the web app locally. Browsing needs only the contract name, no keys:
 
 ```sh
 bun install
@@ -48,7 +50,7 @@ bun run dev   # http://localhost:3000
 1. On the home page, press **Try live replay**. The app checks the published sale from public NEAR and Base RPCs, then broadcasts Alice's kept withdrawal. Base rejects it with `nonce too low`.
 2. Open **Market** and the 4-year grant listed at 4 NEAR. The chart shows its 1-year cliff. Under **Signatures**, nonce 0 is used, and **History** shows it proven consumed before the listing.
 3. Open the lot leased to Carol. The offer box shows who controls the address until the lease ends, and the title checks show it isn't sealed for transfer.
-4. Connect a NEAR testnet wallet with a few testnet NEAR and buy the stream that is nearly finished, listed at 0.4 NEAR. It moves to **Portfolio**, and the lot page lists you as owner of the same Base address. If another judge bought it first, buy any listed lot.
+4. Connect a NEAR testnet wallet with a few testnet NEAR and buy any lot under **On offer** that you can afford, such as the fresh 6-month grant listed at 1 NEAR. It moves to **Portfolio**, and the lot page lists you as owner of the same Base address.
 
 The market comes from `bun run seed`: six vesting scenarios on test USDC, from a fresh grant to a resold one.
 
