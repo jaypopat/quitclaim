@@ -5,12 +5,14 @@ import { reached, tokenInfo } from "@quitclaim/shared/base.ts";
 import {
   allTokens,
   contractFinality,
+  getLot,
   leaseLeft,
   mintedLot,
   proceedsOf,
   tokensOf,
 } from "@quitclaim/shared/lot-views.ts";
-import type { Address } from "viem";
+import { getAddress, type Address } from "viem";
+import type { Lot } from "@quitclaim/shared/lot.gen.ts";
 import { fullAccessKeys } from "@quitclaim/shared/near.ts";
 import { LOT_CONTRACT } from "./contract.ts";
 
@@ -28,6 +30,27 @@ export const lotQuery = (id: number) =>
   queryOptions({
     queryKey: ["lot", LOT_CONTRACT, id],
     queryFn: () => fetchLotView(LOT_CONTRACT, id),
+  });
+
+/** Just the NEAR record and token for the home hero: two reads instead of a full `LotView`. */
+export type HeroLot = {
+  lot: Lot;
+  address: Address;
+  token: { address: Address; symbol: string; decimals: number };
+};
+
+export const heroLotQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["hero-lot", LOT_CONTRACT, id],
+    queryFn: async (): Promise<HeroLot> => {
+      const lot = await getLot(LOT_CONTRACT, id);
+      if (!lot?.address) throw new Error(`lot ${id} is not minted`);
+      return {
+        lot,
+        address: getAddress(lot.address),
+        token: await tokenInfo(getAddress(lot.token)),
+      };
+    },
   });
 
 /** The lot someone is looking at: polled, fast while a signature is in flight. */
