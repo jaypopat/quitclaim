@@ -1,7 +1,6 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { config } from "@quitclaim/shared/config.ts";
-import { position } from "@quitclaim/shared/derive.ts";
 import type { ReactNode } from "react";
 import { HandoverStory } from "@/components/landing/handover-story.tsx";
 import { HeistReplay } from "@/components/landing/heist-replay.tsx";
@@ -12,9 +11,12 @@ import { LotCard } from "@/components/lot-card.tsx";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GITHUB, LOT_CONTRACT } from "@/lib/contract.ts";
-import { frozenQuery, lotIdsQuery, lotQuery } from "@/lib/queries.ts";
+import { frozenQuery, lotIdsQuery } from "@/lib/queries.ts";
 
 export const Route = createFileRoute("/")({ component: Landing });
+
+/** The seeded 4-year grant: the most still to vest, and one lot to load instead of every lot. */
+const HERO_LOT = 7;
 
 function Section({
   title,
@@ -78,22 +80,6 @@ function Panel({
 function Landing() {
   const { data: ids } = useQuery(lotIdsQuery);
   const { data: frozen = false } = useQuery(frozenQuery);
-  // Feature the lot with the most still to vest: the liveliest story, never a spent test lot.
-  const heroId = useQueries({
-    queries: (ids ?? []).map(lotQuery),
-    combine: (results) => {
-      if (results.some((r) => r.isPending)) return undefined;
-      const nowSec = Date.now() / 1000;
-      const views = results.flatMap((r) => (r.data ? [r.data] : []));
-      return views.reduce<(typeof views)[number] | undefined>(
-        (best, v) =>
-          !best || position(v, nowSec).locked > position(best, nowSec).locked
-            ? v
-            : best,
-        undefined,
-      )?.id;
-    },
-  });
   return (
     <main>
       <section className="grid min-h-[calc(100dvh-4rem)] items-center gap-[clamp(32px,5vw,72px)] px-[clamp(20px,4vw,64px)] pt-[clamp(24px,4vh,48px)] pb-[clamp(48px,8vh,96px)] lg:grid-cols-2">
@@ -142,11 +128,7 @@ function Landing() {
             </div>
           </div>
         </div>
-        {heroId === undefined ? (
-          <Skeleton className="h-[420px]" />
-        ) : (
-          <HeroLot id={heroId} />
-        )}
+        <HeroLot id={HERO_LOT} />
       </section>
 
       <Section title="No private key. Four NEAR pieces instead.">
